@@ -6,10 +6,10 @@ which holds the abstract, the status assessment and the reasoning; this document
 thing you hold while recording.
 
 **Read this first:** every act below is marked **🟢 DOABLE TODAY**, **🟡 PARTIAL**, or
-**🔴 NEEDS WORK**. The marks are the point of the document. Three of the seven acts are
-recordable this afternoon against a Kind cluster; three more are scripted and unit-tested but
+**🔴 NEEDS WORK**. The marks are the point of the document. Three of the eight acts are
+recordable this afternoon against a Kind cluster; four more are scripted and unit-tested but
 blocked behind a single cluster run that has never been executed; one needs code that does not
-exist, plus three further beats in §9.
+exist. Two further beats sit below the acts: one built but without a stage, one needing SPIRE.
 
 Nothing here is narrated over a system that does not do it. Where a beat is cut, the script
 says what to say instead — per the talk's own thesis, an unchecked control claim is the
@@ -26,16 +26,27 @@ failure mode with no recovery.
 | **3** | Forged *response* refused | 🟡 **PARTIAL** | scripted, never run on a cluster |
 | **4** | Completion bound to the wake | 🟢 **DOABLE TODAY** | — |
 | **5** | Audit trail over the topic | 🟡 **PARTIAL** | built, never run on a cluster |
-| **6** | Back to zero when idle | 🟢 **DOABLE TODAY** | — |
-| **7** | Blocked egress on a wrong-scope call | 🔴 **NEEDS WORK** | **cut it** — see §7 |
-| **—** | Forged *request* refused | 🔴 **NEEDS WORK** | control exists, no stage drives it |
+| **6** | Forged *request* refused — the wake itself | 🟡 **PARTIAL** | scripted + tested, never run on a cluster |
+| **7** | Back to zero when idle | 🟢 **DOABLE TODAY** | — |
+| **8** | Blocked egress on a wrong-scope call | 🔴 **NEEDS WORK** | **cut it** — see §8 |
+| **—** | Allowlist drift between submit and wake | 🟡 **PARTIAL** | enforcement built; needs a demo stage |
 | **—** | No SVID, no consumption | 🔴 **NEEDS WORK** | no SPIRE anywhere |
-| **—** | Allowlist drift between submit and wake | 🔴 **NEEDS WORK** | runner never reads `ce_submitter` |
 
-**The single blocking item is a cluster run, not a build.** Acts 2, 3 and 5 are implemented
-and unit-tested; what does not exist is any record of them executing against a real broker,
-and therefore any on-cluster signing figure. Tracked as
+**The single blocking item is a cluster run, not a build.** Acts 2, 3, 5 and 6 are
+implemented and unit-tested; what does not exist is any record of them executing against a
+real broker, and therefore any on-cluster signing figure. Tracked as
 [eventing-lab#2](https://github.com/rossoctl/eventing-lab/issues/2).
+
+**Changed 2026-10-13.** Two beats moved off the 🔴 list:
+
+- **Act 6, the forged *request*,** is now built — `assert_forged_request_refused` plus
+  `FORGE_REQUEST_SRC` in `scripts/k8s_demo_flow.py`, with eight tests in
+  `tests/test_demo_flow_signed.py` that prove the forged bytes decode as a well-formed
+  request and are refused by the real `verify_request`, and that a genuinely signed one is
+  accepted.
+- **The submitter allowlist (R2)** is implemented: `ER_ALLOWED_SUBMITTERS` on EventRunner,
+  enforced after the signature check, with nine tests. What is still missing is a *demo
+  stage* that shows the drift live — the control exists, the beat does not yet.
 
 ---
 
@@ -217,7 +228,47 @@ From `keyset.py`'s own docstring, which is better than a paraphrase:
 
 ---
 
-## 7. Act 6 — back to zero  (D5)
+## 7. Act 6 — a forged *request* is refused  (R3)
+
+🟡 **PARTIAL — built and tested 2026-10-13, never run on a cluster.**
+
+Implemented as `assert_forged_request_refused`, with the attacker's program in
+`FORGE_REQUEST_SRC`. **This is the beat the abstract literally names** — "the event broker
+hands off events before signature check" — and it is a different topic *and* direction from
+Act 3. That one forges an **answer** to real work; this one forges the **work itself**.
+Neither substitutes for the other.
+
+**On screen:** a throwaway pod publishes one unsigned request onto the **requests** topic.
+Then replicas go 0 → 1, the runner logs its refusal, and replicas go back to 0 — with no
+transcript anywhere for that correlation id.
+
+```sh
+# driven automatically by --overlay kind-signed; the refusal looks like
+# [consume] rejecting unsigned/badly-signed request corr=forged-...: no ce_signature
+#           attribute (ER_REQUIRE_SIGNATURE=true) — offset committed, not retried
+```
+
+**Say:** the pod woke up, declined to work, and went away.
+
+**Why that sentence and not "nothing happened".** KEDA scales on lag over the requests
+topic with `lagThreshold: 1`, so the forged request is what *causes* the runner to exist.
+Claiming replicas stay at zero would be wrong, and anyone watching `kubectl get deploy`
+would catch it. The honest claim is stronger anyway: the system spent a pod to refuse,
+committed the offset so the message is not retried forever, and ran no agent.
+
+**The prompt in the forgery is deliberately ugly** — it asks the agent to exfiltrate
+secrets. If this control fails, the demo should make the consequence obvious rather than
+subtle.
+
+**What the evidence is, and why.** `rejected_unsigned` is an in-process counter with no
+HTTP endpoint, so the beat asserts the runner's own log line plus **the absence of a run** —
+a `GET /v0/agents/<forged-corr>` that finds no transcript. The correlation id is one
+EventBridge never minted, so a transcript existing for it could only mean the forged
+request executed.
+
+---
+
+## 8. Act 7 — back to zero  (D5)
 
 🟢 **DOABLE TODAY.** Measured: 30–31 s with `cooldownPeriod: 30`.
 
@@ -232,11 +283,16 @@ runner loads its configuration at *startup*. Change something while replicas are
 the next wake enforces the new value. There is no long-lived process holding a stale
 decision.
 
-That is the setup for the seam you are *not* demoing — see §8.
+**This is now a demonstrable claim, not just a nice line.** `ER_ALLOWED_SUBMITTERS` is read
+in `config.from_env` at startup and never per record, so editing it while replicas are 0
+means the next wake enforces the new list. What is missing is a *stage* that performs the
+edit on camera — see §9.2.
+
+That is also the setup for the seam you are *not* demoing — see §9.
 
 ---
 
-## 8. Act 7 — blocked egress  (D3): **cut it**
+## 9. Act 8 — blocked egress  (D3): **cut it**
 
 🔴 **NEEDS WORK — and the recommendation is to cut the beat, not build it.**
 
@@ -271,37 +327,31 @@ actually fails before relying on it.
 
 ---
 
-## 9. The three beats that need code
+## 10. What still needs work
 
-🔴 **NEEDS WORK.** None of these can be narrated over the system as it stands today. They
-are listed in the order I would build them.
+Listed in the order I would do them. The first is half-built and cheap; the second is the
+one real decision left.
 
-### 9.1 Forged *request* refused — cheapest, highest ratio
+### 10.1 Allowlist drift between submit and wake  (R2) — half done
 
-The control **already exists and is real**: with `ER_REQUIRE_SIGNATURE=true`, an unsigned
-request hits `consume.py` → `verify_request` → `rejected_unsigned`, the offset is committed,
-and the agent is never run. **Nothing drives it.**
+**The enforcement now exists.** `ER_ALLOWED_SUBMITTERS` on EventRunner refuses a request
+whose `ce_submitter` is absent or unlisted, checked **after** the signature so the attribute
+is one a signature covers (`submitter` is in `signing.SIGNED_ATTRS`, so it cannot be
+rewritten in flight). Nine tests pin the decisions, including that the signature check fires
+first and that a stale event is still dropped by the age guard rather than reported as an
+allowlist miss.
 
-This is the beat the abstract's "the event broker hands off events before signature check"
-actually names, and it is a different topic *and* direction from Act 3, which forges a
-*response*. Both are worth showing; neither substitutes for the other.
+**What is missing is the stage**, not the control: something that submits as an approved
+user, scales to zero, edits the ConfigMap, and shows the *same* request refused on the next
+wake. Perhaps an hour's work now the enforcement is in.
 
-**Work:** one demo stage that publishes an unsigned frame to the **requests** topic and
-asserts the agent never ran. Hours, not days — the control and the metric are both already
-there. Scope item 6 on [eventing-lab#2](https://github.com/rossoctl/eventing-lab/issues/2).
+**One caveat to state on the slide.** With `ER_REQUIRE_SIGNATURE=false` the list is still
+enforced but means much less — `ce_submitter` is then whatever the publisher typed, so it
+filters honest clients and restricts nobody. The runner prints a `WARNING` saying exactly
+that at startup, and `test_the_allowlist_is_enforced_even_without_signature_enforcement`
+pins the behaviour so the banner cannot quietly become a lie.
 
-### 9.2 Allowlist drift between submit and wake  (R2)
-
-**EventRunner never reads `ce_submitter`** — zero matches in `eventrunner/`. It verifies that
-EventBridge *signed*, not *who asked*. So "the same event is accepted, then refused after the
-allowlist changes" cannot be shown.
-
-**Work:** a runner-side submitter allowlist, loaded at startup. New code, but small. This is
-the sharper of the two remaining stories, because the drift window is real rather than
-contrived: edit the list while replicas are 0 and the next wake enforces the new one. It is
-what turns §7's transition into a demonstrated claim.
-
-### 9.3 No SVID, no consumption  (R1) — the SPIRE decision
+### 10.2 No SVID, no consumption  (R1) — the SPIRE decision
 
 Two of the four seams name SPIRE. **There is no SPIRE** — and no `spiffe` mention anywhere in
 the non-markdown tree. The closest the code comes is `shared/keyset.py`'s docstring, which
@@ -329,7 +379,7 @@ path with its obstacles" — which is a defensible talk, and §3's original Opti
 
 ---
 
-## 10. The §8 section — 3–4 minutes, and the differentiator
+## 11. The §8 section — 3–4 minutes, and the differentiator
 
 🟢 **DOABLE TODAY. Needs no engineering at all.**
 
@@ -367,7 +417,7 @@ something a sharp attendee catches into evidence of rigor. **Go first.**
 
 ---
 
-## 11. Running order and timing
+## 12. Running order and timing
 
 30 minutes is ~22–24 min of content, 4 min of demo, 3–4 min of questions. **The demo is the
 constraint** — D1–D5 cannot be driven live in four minutes: the wake alone is 1.0–5.0 s on
@@ -394,11 +444,11 @@ architecture slides instead.
 
 ---
 
-## 12. Likely questions, with answers that exist
+## 13. Likely questions, with answers that exist
 
 | Question | Where the answer is |
 | --- | --- |
-| Why not SPIRE already? | §9.3; §8.3's EdDSA/JWKS obstacles |
+| Why not SPIRE already? | §10.2; §8.3's EdDSA/JWKS obstacles |
 | Why not a JWT library / Keycloak? | Phase 2 §2.1, §4.3 — Keycloak proves holding a secret, which a compromised pod also holds |
 | Why hand-rolled Ed25519? | Phase 1 §1.1; Phase 2 §4.3. Mention the `_scalar_mult` timing caveat before someone else does |
 | Why not HMAC — it's 170,000× faster? | Phase 2 §4.3: symmetric, so EventBridge could forge any agent's response |
@@ -409,7 +459,7 @@ architecture slides instead.
 
 ---
 
-## 13. Things to say verbatim
+## 14. Things to say verbatim
 
 Lifted from the code's own docstrings, which beat any paraphrase:
 
@@ -421,7 +471,7 @@ Lifted from the code's own docstrings, which beat any paraphrase:
 
 ---
 
-## 14. Pre-flight checklist
+## 15. Pre-flight checklist
 
 Before you consider the demo recordable:
 
@@ -431,6 +481,6 @@ Before you consider the demo recordable:
 - [ ] Confirm **which cluster** every number on every slide came from
 - [ ] Pre-pull images on the node (a cold pull is 5.1 s of the wake at 245 MB)
 - [ ] Decide **R1/SPIRE: build the gate, or cut the beat and name the upgrade path**
-- [ ] Decide whether §9.1 (forged request) makes the cut — it is the cheapest remaining beat
+- [ ] Decide whether the §10.1 allowlist-drift stage makes the cut — ~1 hour now that enforcement is in
 - [ ] Re-run the suite and quote the **collected** count with its environment, not a bare pass figure
 - [ ] Do not expose the public Route during the conference, or set `EB_AUTH_TOKENS` — [eventing-lab#1](https://github.com/rossoctl/eventing-lab/issues/1) is an unauthenticated `PUT /transcript` that rewrites what an agent resumes from
