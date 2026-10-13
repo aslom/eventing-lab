@@ -8,9 +8,9 @@ namespace: kev1
 #
 # A separate overlay rather than a patch on `kind`, for two reasons:
 #
-#   * S3 and S5 (#2593/#2595) are explicitly **unsigned** milestones, so the plain
-#     `kind` path has to keep demonstrating the system without signatures — the
-#     before/after contrast is the demo.
+#   * S3 and S5 (rossoctl/rossoctl#2593 and rossoctl/rossoctl#2595) are explicitly
+#     **unsigned** milestones, so the plain `kind` path has to keep demonstrating the
+#     system without signatures — the before/after contrast is the demo.
 #   * `tests/test_manifests.py` asserts the `test` overlay mounts no credential at all
 #     so mock mode is auto-detected. Keeping enforcement out of the shared overlays
 #     means that assertion stays true and keeps meaning something.
@@ -63,7 +63,7 @@ patches:
   # The seed paths, beside the volume that supplies the seed — which is the whole point
   # of the location rule. `env` rather than the ConfigMap also keeps
   # `test_manifests.py`'s Secret-vs-ConfigMap assertions able to mean what they say,
-  # including the Phase 3 tuple in #883 that is scoped to seed-path variables.
+  # including the Phase 3 tuple in examples#883 that is scoped to seed-path variables.
   - target:
       kind: Deployment
       name: eventbridge

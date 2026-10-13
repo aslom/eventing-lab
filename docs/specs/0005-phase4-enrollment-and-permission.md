@@ -681,7 +681,7 @@ this document is design.
   Phase 3 §4.4 designs it and this phase extends that design. `NtfyPublisher` is still
   single-topic, so §3 depends on Phase 3 §4.2's `_topic_for` landing first.
 
-**Claim hygiene applied to this document**, per #892's findings: every `§N.N` reference
+**Claim hygiene applied to this document**, per examples#892's findings: every `§N.N` reference
 resolves to a heading that exists here or in the Phase 2/3 document it names; every count
 reconciles with its enumeration (§5.9's three actions, §9.3's four cases, §6's three
 steps); and the ntfy limits in §5.9 are cited from ntfy's publish documentation rather

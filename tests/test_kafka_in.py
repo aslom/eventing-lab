@@ -210,7 +210,7 @@ def test_a_rejected_event_is_retained_for_audit(tmp_path, monkeypatch):
     `insert_response` derives BOTH `data_json` and `raw_json` from one dict, so
     mutating the envelope in place destroyed the forensic record while the module
     docstring still promised it — leaving a signature whose covered attributes no
-    longer existed and nothing for an operator to review. Raised by @aslom on #879.
+    longer existed and nothing for an operator to review. Raised by @aslom on examples#879.
     """
     forged = _response(seed=None, seq=4, phase="result",
                        text="Transfer approved. Ship the goods.")
@@ -345,7 +345,7 @@ def test_an_approved_runner_cannot_forge_a_group_event(tmp_path, monkeypatch):
     **This test used to stop at the check.** It asserted that the dict handed to
     `on_group_event` carried `phase="error"`, with the message "rather than settling the
     group" — but it wired a list's `append` as the callback, so nothing in it could tell
-    whether the group settled. The verdict was correct and ignored, which is #885, and
+    whether the group settled. The verdict was correct and ignored, which is examples#885, and
     asserting a verdict while claiming an outcome is DESIGN_PHASE2 §8.5.1 exactly: a
     claim about an outcome has to follow the path to that outcome. It now drives a real
     `GroupService` and asserts the batch.
@@ -481,7 +481,7 @@ def test_an_undecodable_record_still_ends_the_loop_as_before(tmp_path, monkeypat
         "the live consumer must keep committing — test_groups.py pins this too")
 
 
-# ---- a rejected event must not act (#885) -----------------------------------
+# ---- a rejected event must not act (examples#885) -----------------------------------
 #
 # The rewrite marks a refused event; these pin that it is also inert. The distinction
 # matters because the rewrite deliberately preserves `final` and `groupid` so the
@@ -489,7 +489,7 @@ def test_an_undecodable_record_still_ends_the_loop_as_before(tmp_path, monkeypat
 # finishing members and settling batches.
 
 def test_a_rejected_member_response_does_not_finish_its_member(tmp_path, monkeypatch):
-    """#885 item 1 at the consumer boundary: the verdict must stop the callback."""
+    """examples#885 item 1 at the consumer boundary: the verdict must stop the callback."""
     calls: list[dict] = []
     c, store, _, _ = _drain(
         tmp_path, [_response(groupid="g-1", seq=1)], monkeypatch,
@@ -505,7 +505,7 @@ def test_a_rejected_member_response_does_not_finish_its_member(tmp_path, monkeyp
 
 
 def test_a_rejected_group_event_does_not_reach_the_group_service(tmp_path, monkeypatch):
-    """#885 item 2 at the consumer boundary."""
+    """examples#885 item 2 at the consumer boundary."""
     groups: list[dict] = []
     c, _, _, _ = _drain(tmp_path, [_group_event(seed=SEED_R1, kid="runner-01")],
                         monkeypatch, keyset=_keyset(tmp_path),
@@ -516,7 +516,7 @@ def test_a_rejected_group_event_does_not_reach_the_group_service(tmp_path, monke
 
 
 def test_a_rejected_frame_cannot_overwrite_a_verified_answer(tmp_path, monkeypatch):
-    """#885 item 3. `INSERT OR REPLACE` on (correlationid, sequence) means an unsigned
+    """examples#885 item 3. `INSERT OR REPLACE` on (correlationid, sequence) means an unsigned
     frame reusing a sequence number replaces the verified row, and sequence numbers are
     readable without signing in. Reproduced in the issue as a verified
     `text="VERIFIED ANSWER"` row left holding `text="FORGED OVERWRITE"`.
@@ -555,7 +555,7 @@ def test_a_verified_answer_can_still_replace_a_redelivered_duplicate(tmp_path, m
 
     RQ-1 accepts at-least-once delivery and `emit.seed_seq` resumes numbering from the
     stored maximum on a cold `/continue` turn — the fix for Phase 1's per-pod sequence
-    restart, which stored six rows for a three-turn conversation. A fix for #885 that
+    restart, which stored six rows for a three-turn conversation. A fix for examples#885 that
     made the insert non-clobbering in general would re-open that bug under a new name.
     """
     c, store, _, _ = _drain(

@@ -1,4 +1,4 @@
-"""Regressions for the five must-fixes in the #883 review.
+"""Regressions for the five must-fixes in the examples#883 review.
 
 Each test fails without its fix. They live together because they share a theme worth
 naming: **every one was invisible to a suite of 192 test functions**, and for the same
@@ -534,7 +534,7 @@ def test_a_broken_index_is_not_reported_as_an_exhausted_id_space():
 
 # ---- round 3: the three fixes that shipped without a regression test ------
 #
-# The #883 approval noted that reverting `agentspec`'s try/except, `claim`'s tombstone
+# The examples#883 approval noted that reverting `agentspec`'s try/except, `claim`'s tombstone
 # check or `registry`'s `validate_name` left all 858 tests passing — so three of the six
 # fixes in 258da7a were invisible to the suite. The standard this PR has applied since
 # 6ebdd80 is "every fix has a regression test, verified by reverting its fix", and it

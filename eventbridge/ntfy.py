@@ -215,7 +215,7 @@ class NtfyPublisher(threading.Thread):
         the forger also controls — a frame that keeps `ce_groupid` but omits `ce_userkey`
         routes to `shared/`, where the membership row is not, and escapes suppression
         exactly as before. Closing that means resolving the store from the ownership
-        index rather than the event; #904 tracks it.
+        index rather than the event; eventing-lab#5 tracks it.
         """
         store = self._store_for(event)
         if store is None:

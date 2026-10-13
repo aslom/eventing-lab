@@ -476,7 +476,7 @@ deletes the original intent loses the more useful half.
 
 ### 8.1 Promises in §4.4 that the code does not keep
 
-**Status, 2026-10-09: the two #885 rows below are fixed; the table records what the code
+**Status, 2026-10-09: the two examples#885 rows below are fixed; the table records what the code
 did when the review found it, per §8.7.** A rejected event is now inert as well as
 marked — it is stored and rendered, but it reaches neither `on_group_event`,
 `on_member_event` nor a verified row's sequence, and the group mirror verifies
@@ -492,15 +492,15 @@ Two corrections to what this table claims, found by running it:
   refusing `__`-prefixed names a forger could mark every *genuine* answer rejected —
   inverting the control rather than bypassing it. Found by the test written to assert
   the opposite, which is §8.5.4's question answered the wrong way at first.
-* #886 (the keyset-alone row) and #888 (the `EB_SIGNING_KID` row) were fixed earlier, in
-  #902 and #888's own change.
+* examples#886 (the keyset-alone row) and examples#888 (the `EB_SIGNING_KID` row) were fixed earlier, in
+  examples#902 and examples#888's own change.
 
 | §4.4 says | The code does | Issue |
 |---|---|---|
-| "A keyset alone verifies **and logs**" | Verifies and returns a verdict. Nothing is logged or counted, so the observable reject rate the two-flag rollout depends on does not exist. | [#886](https://github.com/rossoctl/examples/issues/886) |
-| The verifier accepts "**only**" EventBridge's kid for group events, so an approved runner "cannot forge a `group.completed` and end a batch early" | Flags it, then applies it anyway. `kafka_in.py` routes on `ce.is_group_event(evt)` — the *original* event, independently of the rewrite — and the rewrite replaces only `phase`/`data`, so `type` and `groupid` survive and `on_group_event` ends the batch. The group mirror replays group events unverified on restart. | [#885](https://github.com/rossoctl/examples/issues/885) |
-| Step 2: "this proves *who finished a run*" | Not once stored. `insert_response` uses `INSERT OR REPLACE` on `(correlationid, sequence)`, so a later **unsigned** frame reusing a sequence number replaces the verified terminal row. | [#885](https://github.com/rossoctl/examples/issues/885) |
-| "EventBridge refuses to start with a keyset but no `EB_SIGNING_KID`" | True — but nothing checks that the kid is *in* the keyset. EventBridge starts, then flags its own group events. | [#888](https://github.com/rossoctl/examples/issues/888) |
+| "A keyset alone verifies **and logs**" | Verifies and returns a verdict. Nothing is logged or counted, so the observable reject rate the two-flag rollout depends on does not exist. | [examples#886](https://github.com/rossoctl/examples/issues/886) |
+| The verifier accepts "**only**" EventBridge's kid for group events, so an approved runner "cannot forge a `group.completed` and end a batch early" | Flags it, then applies it anyway. `kafka_in.py` routes on `ce.is_group_event(evt)` — the *original* event, independently of the rewrite — and the rewrite replaces only `phase`/`data`, so `type` and `groupid` survive and `on_group_event` ends the batch. The group mirror replays group events unverified on restart. | [examples#885](https://github.com/rossoctl/examples/issues/885) |
+| Step 2: "this proves *who finished a run*" | Not once stored. `insert_response` uses `INSERT OR REPLACE` on `(correlationid, sequence)`, so a later **unsigned** frame reusing a sequence number replaces the verified terminal row. | [examples#885](https://github.com/rossoctl/examples/issues/885) |
+| "EventBridge refuses to start with a keyset but no `EB_SIGNING_KID`" | True — but nothing checks that the kid is *in* the keyset. EventBridge starts, then flags its own group events. | [examples#888](https://github.com/rossoctl/examples/issues/888) |
 
 A fifth, promised nowhere but worse than any of them:
 
@@ -511,28 +511,32 @@ forged terminal response is stored as an answer, and the startup line says `resp
 verification OFF`. The request side does the opposite: with `ER_REQUIRE_SIGNATURE=true`
 and no key at all, `verify_event` refuses every request. **The two sides fail in
 opposite directions, and only one of them is loud.**
-([#888](https://github.com/rossoctl/examples/issues/888))
+([examples#888](https://github.com/rossoctl/examples/issues/888))
 
 ### 8.2 §3's "deliberately left open" is wider than stated
 
 - **§3.1's capability-URL argument rests on ids being unguessable, and the group list
   publishes them.** `GET /v0/groups` returns the 100 most recent groups without sign-in.
-  ([#887](https://github.com/rossoctl/examples/issues/887))
+  ([eventing-lab#1](https://github.com/rossoctl/eventing-lab/issues/1))
 - **The member list publishes them too.** `GET /v0/groups/{id}/status` lists every
   member's correlation id, so for any conversation in a group the capability is published
-  rather than merely guessable. ([#887](https://github.com/rossoctl/examples/issues/887))
+  rather than merely guessable. ([eventing-lab#1](https://github.com/rossoctl/eventing-lab/issues/1))
 - **§3.2 understates what `PUT /transcript` allows.** It is the checkpoint EventRunner
   **resumes from** on a cold pod, so an unauthenticated write changes what the agent
   continues with. Request signing does not cover it.
-  ([#887](https://github.com/rossoctl/examples/issues/887))
+  ([eventing-lab#1](https://github.com/rossoctl/eventing-lab/issues/1))
 - **Group-member push suppression is defeated by omitting an attribute.** `ntfy.py`
   decides on the *event's own* `ce_groupid`, not on group membership. A forged
   non-terminal frame without it is pushed, stored in the member's transcript and shown
   on the group page; a forged terminal without it is pushed at priority 5 even with
   `NTFY_GROUP_NOTIFY_ERRORS` off, and does not count the member as failed.
-  ([#891](https://github.com/rossoctl/examples/issues/891)) — §8.5.4 is the general rule
-  this is an instance of, and the fix is to decide on group membership from the store
-  rather than on the groupid the frame supplies.
+  ([examples#891](https://github.com/rossoctl/examples/issues/891), closed — the
+  single-tenant half) — §8.5.4 is the general rule this is an instance of, and the fix is
+  to decide on group membership from the store rather than on the groupid the frame
+  supplies. **The multi-tenant half is still open as
+  [eventing-lab#5](https://github.com/rossoctl/eventing-lab/issues/5)**: in `multi` mode
+  the store a frame routes to is chosen by `ce_userkey`, which the forger controls in
+  exactly the same way, so omitting it routes to `shared/` and escapes suppression again.
 
 ### 8.3 Four things about the keys
 
@@ -640,7 +644,7 @@ naming the release and the issue, per the docs contributor guide's accuracy rule
 Say what should change, not just that something will. A maintainer acting on a vague
 comment deletes the wrong sentence — and check whether the claim is *still partly
 true* afterwards. "Anything that can write to the responses topic can end a batch"
-survives the fix for #885 whenever enforcement is off, which is the default.
+survives the fix for examples#885 whenever enforcement is off, which is the default.
 
 ### 8.6 Run it — reading the code is not enough
 
@@ -679,17 +683,18 @@ The pattern that worked: leave the design section as written, add a findings sec
 that says what the code does, and link the issue. §8.1–§8.3 above are that shape.
 
 And file the issue. Most of the thirteen were code bugs rather than wording mistakes,
-and they are tracked as [#885](https://github.com/rossoctl/examples/issues/885),
-[#886](https://github.com/rossoctl/examples/issues/886),
-[#887](https://github.com/rossoctl/examples/issues/887) and
-[#888](https://github.com/rossoctl/examples/issues/888).
-[#889](https://github.com/rossoctl/examples/issues/889), a pidfile crash-loop, came
+and they are tracked as [examples#885](https://github.com/rossoctl/examples/issues/885),
+[examples#886](https://github.com/rossoctl/examples/issues/886),
+[eventing-lab#1](https://github.com/rossoctl/eventing-lab/issues/1) and
+[examples#888](https://github.com/rossoctl/examples/issues/888).
+[examples#889](https://github.com/rossoctl/examples/issues/889), a pidfile crash-loop, came
 out of the same review without being a claim in any document. Documenting a bug
 honestly is not the same as accepting it.
 
 ### 8.8 One note on the review process itself
 
-Most of the late rounds on #2609 fixed wording that a *previous round had suggested*.
+Most of the late rounds on rossoctl/rossoctl#2609 fixed wording that a *previous round had
+suggested*.
 Both the author and the reviewer were writing sentences from the code's docstrings
 without running them, and both were wrong at about the same rate.
 

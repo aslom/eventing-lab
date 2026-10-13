@@ -17,6 +17,7 @@ Read alongside:
 
 | For | Read |
 |---|---|
+| **The run-of-show, with every act marked doable or not** | [`../demos/kubecon-na-2026-demo.md`](../demos/kubecon-na-2026-demo.md) |
 | The wire contract that must not change | [`../specs/0001-phase0-local-wire-contract.md`](../specs/0001-phase0-local-wire-contract.md) |
 | KEDA scaling, scale-to-zero, the §16 gaps | [`../specs/0002-phase1-keda-kubernetes.md`](../specs/0002-phase1-keda-kubernetes.md) |
 | Identity on the event path, **and §8's thirteen findings** | [`../specs/0003-phase2-identity-on-the-event-path.md`](../specs/0003-phase2-identity-on-the-event-path.md) |
@@ -64,7 +65,7 @@ tracks each one separately.
 | # | Beat | Backed by |
 |---|---|---|
 | D1 | zero agent replicas | ✅ KEDA `minReplicaCount: 0`, measured |
-| D2 | signed task event → agent wake | 🟡 JWS real and enforced; the demo can now drive it (#896), but **the run has not happened** |
+| D2 | signed task event → agent wake | 🟡 JWS real and enforced; the demo can now drive it (eventing-lab#2), but **the run has not happened** |
 | D3 | blocked egress on a wrong-scope call | ❌ **no implementation at all** |
 | D4 | completion bound to the wake event | ✅ `ce_causationid` |
 | D5 | scale to zero when agents are idle | ✅ measured, 30–31 s back to zero with `cooldownPeriod: 30` |
@@ -92,7 +93,7 @@ Three notes that matter more than the table:
 * **R2 is why scale-to-zero is a security story, not just a cost story.** The runner loads
   its allowlist at **startup**, so the drift window is real rather than contrived: edit the
   list while replicas are 0 and the next wake enforces the new one. Say that out loud.
-* **R3 is a different topic and direction from #896's stage**, which forges a *response*.
+* **R3 is a different topic and direction from eventing-lab#2's stage**, which forges a *response*.
   Both are worth showing; neither substitutes for the other.
 
 ---
@@ -103,7 +104,7 @@ Assessed 2026-10-05 against `main`. Method: read all nine `agentdocs/` files and
 full source, then **ran the identity decision functions** rather than trusting
 docstrings — which is `../specs/0003-phase2-identity-on-the-event-path.md` §8.6's rule, and it changed two conclusions.
 
-**Refreshed 2026-10-12** for the §8 bug fixes (§2.4, §2.5) and for #896 closing the
+**Refreshed 2026-10-12** for the §8 bug fixes (§2.4, §2.5) and for eventing-lab#2 closing the
 "nothing can drive `kind-signed`" gap (§2.6). The seam and beat tables above are
 updated; the test figures below are from the original assessment and are the ones to
 re-measure before the talk.
@@ -120,10 +121,10 @@ not a live count — see §5/M4 before touching it.)
 
 | Seam | Named CNCF integration | Code status |
 |---|---|---|
-| Cold-start identity gap | SPIRE → KEDA | ❌ **No SPIRE/SPIFFE/SVID in `eventing/`.** 8 mentions across 4 files, all prose, all aspirational. (`mcp/wiki_memory_tool/` does ship header-simulated SPIFFE identity — a different component, and its own README notes there is no real SVID verification) |
+| Cold-start identity gap | SPIRE → KEDA | ❌ **No SPIRE/SPIFFE/SVID anywhere.** 6 `spiffe` mentions across 2 files, both of them this note and the demo script — zero in the non-markdown tree. The closest the code comes is `shared/keyset.py`'s docstring naming workload attestation only to disclaim it ("What it does not do is attest anything"). Re-counted after the extraction from `rossoctl/examples`: the old figure said 8 across 4 files and cited `mcp/wiki_memory_tool/`, neither of which exists in this repo |
 | Trust-scope drift | SPIRE → egress sidecar | ❌ **No NetworkPolicy, no Istio, no AuthorizationPolicy, no sidecar** |
 | Unverified delivery | CloudEvents verifier → Knative trigger | 🟡 Verification exists and is real; **no Knative** (Strimzi instead, which the abstract permits) |
-| Unbound audit | event bus → work record | 🟡 `ce_causationid` binds response to request; the replay path now verifies `group.completed` and lets a verified member terminal outrank an unverified one (#955, #956) — it cannot refuse unsigned pre-signing history, which is a property of the history rather than of the check |
+| Unbound audit | event bus → work record | 🟡 `ce_causationid` binds response to request; the replay path now verifies `group.completed` and lets a verified member terminal outrank an unverified one (examples#955, examples#956) — it cannot refuse unsigned pre-signing history, which is a property of the history rather than of the check |
 
 ### 2.2 What is genuinely done and demo-ready
 
@@ -161,16 +162,16 @@ a challenge; the code has it.
 ### 2.4 Confirmed by running the code
 
 Not from docstrings. These five lines are the honest state of response verification —
-**updated 2026-10-12, after #888 and #885 landed.** The before column is kept because the
+**updated 2026-10-12, after examples#888 and examples#885 landed.** The before column is kept because the
 contrast is §5/M3's demo beat: the asymmetry is the point, not the bug.
 
 ```
                                        at the 2026-10-05 review        now
-A) require=True, keyset=None        -> ACCEPTED ("not enabled")  ← #888   refuses, loudly
+A) require=True, keyset=None        -> ACCEPTED ("not enabled")  ← examples#888   refuses, loudly
 B) forged unsigned terminal         -> refused  ✅                        refused  ✅
 C) signed by unapproved kid         -> refused  ✅                        refused  ✅
 D) forged unsigned NON-terminal     -> ACCEPTED (by design)               ACCEPTED (by design)
-E) forged group.completed, enforced -> refused… then applied     ← #885   refused AND inert
+E) forged group.completed, enforced -> refused… then applied     ← examples#885   refused AND inert
 ```
 
 Two rows moved, and both are worth saying out loud because they are the talk's subject:
@@ -180,8 +181,8 @@ Two rows moved, and both are worth saying out loud because they are the talk's s
   *everything* in the same configuration. Now both sides fail closed.
 * **(E)** was refused by the verifier and applied anyway. Now a refused event is inert as
   well as marked: it reaches neither `on_group_event`, `on_member_event`, nor a sequence
-  a verified row already holds (#955), and the group mirror no longer re-applies forged
-  member terminals on restart (#956).
+  a verified row already holds (examples#955), and the group mirror no longer re-applies forged
+  member terminals on restart (examples#956).
 
 **(D) is a deliberate policy, not a bug.** `emit()` signs terminal events only, because
 it runs per `stdout` frame and Ed25519 costs **222 ms to sign, 227 ms to verify** here
@@ -221,22 +222,22 @@ is bounded by what a signature can prove about a record published before signing
 ### 2.5 The §8 bugs, four of five now fixed
 
 From the `../specs/0003-phase2-identity-on-the-event-path.md` §8 docs review. All five were open at the 2026-10-05
-assessment; **as of 2026-10-12 only #887 remains**, which changes what the §8 section can
+assessment; **as of 2026-10-12 only eventing-lab#1 remains**, which changes what the §8 section can
 be demoed as — see the note under the table.
 
 | Issue | What | State |
 |---|---|---|
-| [#885](https://github.com/rossoctl/examples/issues/885) | Response-signature enforcement is advisory — rejected events still end batches and overwrite verified answers | **fixed** (#955) |
-| [#886](https://github.com/rossoctl/examples/issues/886) | Audit mode records nothing, so the documented two-flag rollout cannot be performed | **fixed** (#902) |
-| [#887](https://github.com/rossoctl/examples/issues/887) | Unauthenticated `PUT /transcript` rewrites what an agent resumes from; correlation ids are listable | open — mitigate operationally, §5 cuts it |
-| [#888](https://github.com/rossoctl/examples/issues/888) | `EB_REQUIRE_RESPONSE_SIGNATURE` without a keyset refuses nothing and reports nothing | **fixed** |
-| [#889](https://github.com/rossoctl/examples/issues/889) | Stale pidfile naming PID 1 crash-loops the pod after an abrupt exit | **fixed** (#901) |
+| [examples#885](https://github.com/rossoctl/examples/issues/885) | Response-signature enforcement is advisory — rejected events still end batches and overwrite verified answers | **fixed** (examples#955) |
+| [examples#886](https://github.com/rossoctl/examples/issues/886) | Audit mode records nothing, so the documented two-flag rollout cannot be performed | **fixed** (examples#902) |
+| [eventing-lab#1](https://github.com/rossoctl/eventing-lab/issues/1) | Unauthenticated `PUT /transcript` rewrites what an agent resumes from; correlation ids are listable | open — mitigate operationally, §5 cuts it |
+| [examples#888](https://github.com/rossoctl/examples/issues/888) | `EB_REQUIRE_RESPONSE_SIGNATURE` without a keyset refuses nothing and reports nothing | **fixed** |
+| [examples#889](https://github.com/rossoctl/examples/issues/889) | Stale pidfile naming PID 1 crash-loops the pod after an abrupt exit | **fixed** (examples#901) |
 
-Plus [#956](https://github.com/rossoctl/examples/issues/956), **fixed**, which #885's fix
+Plus [examples#956](https://github.com/rossoctl/examples/issues/956), **fixed**, which examples#885's fix
 did not reach: the group mirror re-applied forged member terminals on replay, so a
 restart put a batch back to `failed: 1` for an agent that had succeeded.
 
-**#888 was the sharpest asymmetry and it is no longer live, which affects §5/M3.** The
+**examples#888 was the sharpest asymmetry and it is no longer live, which affects §5/M3.** The
 response side with enforcement on and no keyset refused **nothing** while printing
 `response verification OFF`; the request side with `ER_REQUIRE_SIGNATURE=true` and no key
 refused **everything**. Both were documented as "refusal is on." Only one was true. M3
@@ -244,7 +245,7 @@ proposed demoing that asymmetry in place of the cut egress beat — so demo it
 **before/after** rather than live, since the bug no longer reproduces. The asymmetry is
 the point, not the bug.
 
-Issue #887 also defeats Phase 2 §3.1's capability-URL argument: `GET /v0/groups` returns the
+Issue eventing-lab#1 also defeats Phase 2 §3.1's capability-URL argument: `GET /v0/groups` returns the
 100 most recent groups without sign-in, and `/v0/groups/{id}/status` lists every member's
 correlation id. For any conversation in a group, the capability is published.
 
@@ -254,7 +255,7 @@ correlation id. For any conversation in a group, the capability is published.
 
 - No document records a run of it.
 - ~~`k8s_demo_flow.py --overlay` accepts only `test`, `kind`, `demo` — it **cannot drive
-  `kind-signed`**.~~ **Closed by #896**: the overlay is a `--overlay` choice, and two
+  `kind-signed`**.~~ **Closed by eventing-lab#2**: the overlay is a `--overlay` choice, and two
   stages assert the signed wake (D2) and that a forged **response** published from an
   in-cluster pod is refused.
 - Every signing result is unit-tested only.
@@ -318,7 +319,7 @@ talk's own thesis is that unchecked control claims are the trap. Overselling the
 in a talk *about* overselling guarantees is the one failure mode with no recovery.
 
 There is also a real seam you can speak to without SPIRE: **signing is opt-in, and the
-two sides fail in opposite directions** (#888). That *is* a cold-start trust gap — a
+two sides fail in opposite directions** (examples#888). That *is* a cold-start trust gap — a
 different one than the abstract names, but a genuine, measured, reproducible one.
 
 ### Option B — wire a minimal SPIRE
@@ -379,16 +380,16 @@ talk is **§5's M1-M4**, which cuts W6 entirely, defers half of W4, and replaces
 substitution rather than a build. Read this section for *why* each item matters; read §5
 for what to do.
 
-### W1 — Fix #885 and #888 (highest value, smallest change)
+### W1 — Fix examples#885 and examples#888 (highest value, smallest change)
 
 These are the difference between a security demo and security theater, and a sharp
-audience member can find #888 from the slides alone.
+audience member can find examples#888 from the slides alone.
 
-- **#888:** consult `require` even when no keyset is loaded. `kafka_in.py` has
+- **examples#888:** consult `require` even when no keyset is loaded. `kafka_in.py` has
   `ok, why = True, "not checked"` behind `if self._keyset is not None`, so `require` is
   never reached. Fail closed when enforcement is on and verification is unconfigured, and
   make the startup line say so instead of `response verification OFF`.
-- **#885:** route on the **rewritten** event, not the original — or clear `groupid` and
+- **examples#885:** route on the **rewritten** event, not the original — or clear `groupid` and
   `type` on rejection so `on_group_event` cannot be reached. Then decide what the group
   mirror does on replay: verifying on replay is the correct answer, but note that it
   changes restart behaviour for *existing* unsigned topic data, so it needs a flag.
@@ -439,7 +440,7 @@ So the real options are:
 |---|---|---|
 | Swap Kind's CNI for Calico or Cilium | `disableDefaultCNI: true`, install a CNI, then re-verify the whole Phase 1 stack on it — Strimzi, KEDA, ingress-nginx, the scale-to-zero timings | ❌ Too much risk this close to the talk, for one demo beat |
 | Demo the egress block on **OpenShift** (ykt1), which enforces NetworkPolicy natively | A second cluster in the demo, on VPN, and §"Measured" already warns Kind and cluster timings are not comparable | 🟡 Viable as a **separately recorded clip**, labelled as a different cluster |
-| **Cut D3 and substitute the #888 asymmetry** | A few hours, no new infrastructure | ✅ **Recommended — see M3** |
+| **Cut D3 and substitute the examples#888 asymmetry** | A few hours, no new infrastructure | ✅ **Recommended — see M3** |
 
 If the beat is built at all, two things still apply:
 
@@ -459,15 +460,15 @@ Exit criteria, if built: a wrong-scope call is blocked, visibly, within a few se
 under 60 s of demo time, **on a CNI that enforces policy** — verified by checking that a
 deliberately-denied call actually fails before relying on it.
 
-### W4 — Fix #887 and #889
+### W4 — Fix eventing-lab#1 and examples#889
 
-- **#887** is the one with the widest blast radius for a live demo: an unauthenticated
+- **eventing-lab#1** is the one with the widest blast radius for a live demo: an unauthenticated
   `PUT /transcript` changes what the agent *resumes from*, and request signing does not
   cover it. If anyone in the room has the Route hostname, this is reachable. At minimum,
   gate it behind the Phase 2 §3.1 planned HMAC capability key
   (`key = HMAC(server_secret, correlationid + exp)`), which is stdlib-only and stores
   nothing.
-- **#889** is a pidfile crash-loop after an abrupt exit. Low glamour, high demo risk —
+- **examples#889** is a pidfile crash-loop after an abrupt exit. Low glamour, high demo risk —
   this is the bug that bites when you restart a pod between rehearsal and the live run.
 
 ### W5 — Honesty pass on the docs the talk points at
@@ -482,7 +483,7 @@ The talk will send people to this repository. Three fixes:
   quietly stopped being true, and a historical measurement never stopped being true.
 - The `<!-- VERIFY -->` comments `../specs/0003-phase2-identity-on-the-event-path.md` §8.5.5 prescribes are now in this
   file (§2.4, §2.5, §5/M1, §5/M3, §6.3) as of M4 — W5 is after the talk, which was too
-  late for a document whose §5/M3 depends on #888 staying open. Re-check them here.
+  late for a document whose §5/M3 depends on examples#888 staying open. Re-check them here.
 
 ### W6 — Stretch, only if W1–W4 land early
 
@@ -517,22 +518,22 @@ at risk.
 
 | | Item | Effort | Tracked | Blocks |
 |---|---|---|---|---|
-| **M1** | ~~Fix #888, then #885~~ — **done** (#955, plus #956) | ~0.5 d | [#895](https://github.com/rossoctl/examples/issues/895) closed | M2 |
-| **M2** | Run `kind-signed` end to end — **script built, run outstanding** | ~1 d | [#896](https://github.com/rossoctl/examples/issues/896) | the recording |
+| **M1** | ~~Fix examples#888, then examples#885~~ — **done** (examples#955, plus examples#956) | ~0.5 d | [examples#895](https://github.com/rossoctl/examples/issues/895) closed | M2 |
+| **M2** | Run `kind-signed` end to end — **script built, run outstanding** | ~1 d | [eventing-lab#2](https://github.com/rossoctl/eventing-lab/issues/2) | the recording |
 | **M3** | Substitute the egress beat | a decision | — | the demo list |
-| **M4** | #889 + the honesty pass | ~2 h | #889 | — |
+| **M4** | examples#889 + the honesty pass | ~2 h | examples#889 | — |
 
 M2 is the one that must not slip. M3 is a call to make, not work to schedule.
 
-### M1 — Fix #888, then #885  *(~0.5 day)* — [#895](https://github.com/rossoctl/examples/issues/895)
+### M1 — Fix examples#888, then examples#885  *(~0.5 day)* — [examples#895](https://github.com/rossoctl/examples/issues/895)
 
 Both call sites were read; both are small and localised. Every `path:line` below is
 against **`0667270`**, this document's base — the first draft cited `3264e8d`, the commit
-before #883, and the rebase moved `kafka_in.py` by +16 lines and `__main__.py` by +4
+before examples#883, and the rebase moved `kafka_in.py` by +16 lines and `__main__.py` by +4
 without the pointers being re-derived. Re-derive them, do not adjust them, after any
 rebase.
 
-**#888** — `kafka_in.py:109`. The decision is unreachable without a keyset:
+**examples#888** — `kafka_in.py:109`. The decision is unreachable without a keyset:
 
 ```python
 ok, why = True, "not checked"
@@ -545,7 +546,7 @@ banner matters as much as the behaviour** — `__main__.py:80` prints
 enforcement is told it is off and refuses nothing. The silent wrong state is the bug;
 the missing refusal is only half of it.
 
-**#885** — `kafka_in.py:152` routes on `is_group_event(evt)`, the **original** event, so
+**examples#885** — `kafka_in.py:152` routes on `is_group_event(evt)`, the **original** event, so
 the rejection rewrite reaches `on_group_event` → `complete_group()`. The rewrite
 deliberately preserves `type` and `groupid` for forensics (`insert_response` derives both
 `data_json` and `raw_json` from the one dict), so the fix is not to strip them: it is to
@@ -554,7 +555,7 @@ lives under `data["rejected"]`, so nothing is lost.
 
 Tests must **assert the outcome, not the verdict** — `../specs/0003-phase2-identity-on-the-event-path.md` §8.6's rule.
 `response_decision` returning `False` is not the same as the batch not completing, and
-that gap *is* #885.
+that gap *is* examples#885.
 
 **Out of scope for the MVP:** verifying the group mirror's replay path. It is the right
 fix, but it changes restart behaviour for existing unsigned topic data, so it needs a
@@ -564,11 +565,11 @@ Exit criteria: a forged `group.completed` with enforcement on does **not** compl
 batch and does **not** notify; enforcement with no keyset refuses and the banner says
 why.
 
-### M2 — Run `kind-signed` end to end  *(~1 day, depends on M1)* — [#896](https://github.com/rossoctl/examples/issues/896)
+### M2 — Run `kind-signed` end to end  *(~1 day, depends on M1)* — [eventing-lab#2](https://github.com/rossoctl/eventing-lab/issues/2)
 
 **The item that must not slip.** It is what converts "we wrote a verifier" into "we ran
 one", and §2.6 is the argument: there is currently no evidence the signed path survives a
-real broker, ~900 passing tests did not catch #885 or #888, and §4.4 step 2 records that
+real broker, ~900 passing tests did not catch examples#885 or examples#888, and §4.4 step 2 records that
 the one comparable bug was found against a live broker and by no unit test.
 
 - Add `kind-signed` to `k8s_demo_flow.py --overlay`, which today accepts only
@@ -586,14 +587,14 @@ refused → zero, with assertions and timings.
 
 ### M3 — Substitute the egress beat  *(a decision, not a build)*
 
-<!-- VERIFY v0.9.0: this beat demos rossoctl/examples#888 as a live bug, and M1 fixes #888.
-     Run M1 and M3 in that order and the beat becomes "watch the fix land"; fix #888 first
-     without reading this and the substituted beat no longer reproduces. If #888 is already
+<!-- VERIFY v0.9.0: this beat demos rossoctl/examples#888 as a live bug, and M1 fixes examples#888.
+     Run M1 and M3 in that order and the beat becomes "watch the fix land"; fix examples#888 first
+     without reading this and the substituted beat no longer reproduces. If examples#888 is already
      closed when you read this, reframe the beat as before/after rather than deleting it —
      the asymmetry is the point, not the bug. -->
 
 Per §4/W3, the `NetworkPolicy` MVP does not enforce on Kind's default CNI. Rather than
-change CNI or add a second cluster, **cut D3 and substitute the #888 asymmetry**:
+change CNI or add a second cluster, **cut D3 and substitute the examples#888 asymmetry**:
 
 > Enforcement on, no keyset → refuses **nothing**, banner says `OFF`.
 > The request side, no key → refuses **everything**.
@@ -607,9 +608,9 @@ straight always required an apology. Demo the fix landing.
 If D3 is wanted for real, record it on ykt1 as a separate clip and say on-slide that it
 is a different cluster.
 
-### M4 — #889 and the honesty pass  *(~2 hours, parallel)*
+### M4 — examples#889 and the honesty pass  *(~2 hours, parallel)*
 
-- **#889** — a stale pidfile naming PID 1 crash-loops the pod after an abrupt exit. Low
+- **examples#889** — a stale pidfile naming PID 1 crash-loops the pod after an abrupt exit. Low
   glamour, high demo risk: this is the bug that bites when a pod is restarted between
   rehearsal and the live run.
 - **Docs:** correct `keyset.py`'s "the upgrade path changes no verification logic" claim
@@ -620,12 +621,12 @@ is a different cluster.
   is superseded explicitly rather than edited in place. Add a footnote pointing at §2's
   current count instead.
 - Add the `<!-- VERIFY -->` comments `../specs/0003-phase2-identity-on-the-event-path.md` §8.5.5 prescribes to any statement
-  in this file that depends on #885–#889 staying open — §2.4's table, §2.5, §5/M1 and
+  in this file that depends on examples#885–examples#889 staying open — §2.4's table, §2.5, §5/M1 and
   §6.3's slide, and in particular **§5/M3**, whose substituted demo beat stops reproducing
   once M1 lands. Naming the release, the issue and what should change is the rule; this
   document prescribing markers it does not carry is the same inversion §8 is about.
 
-**Deferred: #887.** Widest blast radius in principle — an unauthenticated
+**Deferred: eventing-lab#1.** Widest blast radius in principle — an unauthenticated
 `PUT /transcript` changes what the agent resumes from — but the HMAC capability-key fix is
 real design work and invisible on stage. Mitigate operationally for the conference
 instead: do not expose the Route, or set `EB_AUTH_TOKENS`.
@@ -638,7 +639,7 @@ instead: do not expose the Route, or set `EB_AUTH_TOKENS`.
 | **D3 as a live beat** | kindnetd does not enforce NetworkPolicy (§4/W3) |
 | **Phase 3 tenancy** | Partly implemented, but owner-scoped reads are not. Good "what's next" material; do not demo it |
 | **Group-mirror replay verification** | Correct, but needs a flag and is not on stage |
-| **#887 code fix** | Mitigate operationally |
+| **eventing-lab#1 code fix** | Mitigate operationally |
 
 ### Sequencing
 
@@ -657,8 +658,8 @@ cluster leaves it at 3000 ms — so pick one for the recorded numbers and say wh
 | Seam | After M1-M4 |
 |---|---|
 | Unbound audit | ✅ closed — `ce_causationid` |
-| Unverified delivery | 🟡 signed and enforced (#955, #956). The **response** path has a demo stage; the **request** path (inject into the requests topic, runner refuses) does not yet, and the cluster run has not happened |
-| Cold-start identity gap | ❌ **not demoed.** The #888 asymmetry is a *different* gap and #888 is fixed, so it is before/after commentary rather than a beat. The committed beat is "the runner does not process events until its SVID is issued and verified", and there is no SPIRE |
+| Unverified delivery | 🟡 signed and enforced (examples#955, examples#956). The **response** path has a demo stage; the **request** path (inject into the requests topic, runner refuses) does not yet, and the cluster run has not happened |
+| Cold-start identity gap | ❌ **not demoed.** The examples#888 asymmetry is a *different* gap and examples#888 is fixed, so it is before/after commentary rather than a beat. The committed beat is "the runner does not process events until its SVID is issued and verified", and there is no SPIRE |
 | Trust-scope drift | 🟡 named, with the deploy-time-allowlist limit stated and §8.3's SPIRE obstacles given |
 
 Plus the §8 section (§6.3 below), which is the differentiator and needs no engineering at
@@ -686,7 +687,7 @@ does any work.
    it is still dead air.
 3. Conference wifi. Phase 2 §2.5 already lists offline operation as a design
    requirement for exactly this reason.
-4. #889 crash-loops a pod after an abrupt exit.
+4. examples#889 crash-loops a pod after an abrupt exit.
 
 Record at 1× with a visible clock, cut the dead air with explicit on-screen jumps
 ("+12 s"), and narrate live over it. Have `watch_topics.py` output on screen for the lag
@@ -714,7 +715,7 @@ either accept that or record that one beat separately against a funded key.
 
 ### 6.3 The §8 section is the differentiator — give it 3–4 minutes
 
-<!-- VERIFY v0.9.0: "thirteen claims that do not hold in code" is true while #885-#889 are
+<!-- VERIFY v0.9.0: "thirteen claims that do not hold in code" is true while examples#885-#889 are
      open. As they land, the count of claims that do not hold drops while the count of
      claims that *were* found stays thirteen — say "thirteen found" on the slide, not
      "thirteen outstanding", so the number does not need re-deriving before the talk. -->
@@ -801,9 +802,9 @@ answer ready.
 
 | Risk | Mitigation |
 |---|---|
-| D3 (egress block) cannot be built on Kind's default CNI | Resolved in the MVP: M3 cuts the beat and substitutes the #888 asymmetry. If D3 is wanted anyway, record it on ykt1 as a separate, separately-labelled clip (§4/W3) |
+| D3 (egress block) cannot be built on Kind's default CNI | Resolved in the MVP: M3 cuts the beat and substitutes the examples#888 asymmetry. If D3 is wanted anyway, record it on ykt1 as a separate, separately-labelled clip (§4/W3) |
 | Something else promised in the demo list goes unbuilt | **Cut the beat and say so**, rather than narrating something that did not happen. §1.1's D1-D5 numbering exists so a cut is explicit rather than silent |
-| A reviewer finds #888 from the slides | Fix in M1; present it in the §8 section regardless — and after M3 it *is* a demo beat |
+| A reviewer finds examples#888 from the slides | Fix in M1; present it in the §8 section regardless — and after M3 it *is* a demo beat |
 | Live demo fails | Pre-record (§6.1) |
 | Real-agent path still budget-blocked | Mock mode for the recording; state it on-slide |
 | SPIRE question dominates Q&A | Prepare §3's two options as a 30-second answer |
@@ -822,7 +823,7 @@ Six things from the 2026-10-05 review that are not obvious from any single docum
 
 2. **Reading the code is not enough, and neither is the test suite.** All thirteen
    findings coexisted with a passing suite, because the tests exercised the configuration
-   each claim was true in. ~900 passing tests did not catch #885 or #888.
+   each claim was true in. ~900 passing tests did not catch examples#885 or examples#888.
 
 3. **My own first attempt at the group-forgery test reported no issue** — because I used
    wrong event-type constants (`io.rossoctl.…` instead of `dev.rossoctl.agent.group.
@@ -832,7 +833,7 @@ Six things from the 2026-10-05 review that are not obvious from any single docum
 
 4. **Half-configured is where everything breaks.** §8.5.3 is the highest-yield of the
    five questions. A control with two variables has four cases, and the three that are
-   not "both set" are the ones a reader hits. The worst finding (#888) is exactly that.
+   not "both set" are the ones a reader hits. The worst finding (examples#888) is exactly that.
 
 5. **Attribution vs restriction is the subtler keyset point** (§8.3) and is under-drawn
    in the design: a flat keyset tells you *which approved key* signed, not *that this
@@ -869,5 +870,5 @@ been read rather than run. Confirm it before spending anything on either CNI opt
 | Date | Change |
 |---|---|
 | 2026-10-05 | Created. Captures the accepted abstract, status against it as of `main`, the SPIRE decision, the W1–W6 plan, and the 30-minute slide/demo shape |
-| 2026-10-05 | Added §5, the M1-M4 MVP cut (~2 days) with sequencing, explicit cuts and the talk it supports. Corrected §4/W3: Kind's default CNI is kindnetd and does not enforce NetworkPolicy, so the `NetworkPolicy` MVP was unbuildable as written — three options tabulated, M3 recommends substituting the #888 asymmetry for the egress beat. §7's risk table and §8's observations updated; the 30-minute shape renumbered §5→§6, risks §6→§7, observations §7→§8 |
-| 2026-10-06 | M1 and M2 filed as #895 and #896; §5 gains a tracking table |
+| 2026-10-05 | Added §5, the M1-M4 MVP cut (~2 days) with sequencing, explicit cuts and the talk it supports. Corrected §4/W3: Kind's default CNI is kindnetd and does not enforce NetworkPolicy, so the `NetworkPolicy` MVP was unbuildable as written — three options tabulated, M3 recommends substituting the examples#888 asymmetry for the egress beat. §7's risk table and §8's observations updated; the 30-minute shape renumbered §5→§6, risks §6→§7, observations §7→§8 |
+| 2026-10-06 | M1 and M2 filed as examples#895 and eventing-lab#2; §5 gains a tracking table |

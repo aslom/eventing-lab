@@ -1,6 +1,6 @@
 """Key generation and the deploy-time key material. §11.
 
-Signing was wired in #879 but could not be switched on in a cluster: nothing generated
+Signing was wired in examples#879 but could not be switched on in a cluster: nothing generated
 keys and no Deployment mounted any. These cover the two pieces that close that, and the
 properties worth pinning are mostly about what must NOT happen — a seed must not be
 printed, must not be world-readable, must not be shared between the two services, and a
@@ -233,7 +233,7 @@ def test_dry_run_applies_nothing(tmp_path):
 
 # ---- the seed must DERIVE the approved public key ------------------------
 #
-# Review finding on #884: every other check passes on a pair that does not agree, which
+# Review finding on examples#884: every other check passes on a pair that does not agree, which
 # is the one divergence producing the cluster this validation exists to prevent — pods
 # start (both volumes are `optional: true`), enforcement is on, the service signs with a
 # key nobody approved, and every event is refused with nothing local to look at.
@@ -288,7 +288,7 @@ def test_a_matching_directory_is_still_accepted(tmp_path):
 
 
 def test_a_partial_rotation_writes_nothing_at_all(tmp_path):
-    """Review finding on #884: `write_seeds` wrote kid-by-kid and raised mid-loop, so if
+    """Review finding on examples#884: `write_seeds` wrote kid-by-kid and raised mid-loop, so if
     the FIRST kid in sorted order was missing and a later one present, the first got a
     brand-new seed while `agents.json` — rewritten by the caller, afterwards — kept the
     old public key for it. That is the state the module docstring promises cannot

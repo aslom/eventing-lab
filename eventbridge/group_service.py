@@ -90,7 +90,7 @@ class GroupService:
             #    stopped publishing and the only symptom was a batch that never completed.
             #  * ValueError — `TopicSet` refusing to name a topic without a userkey in
             #    multi mode. That means a caller failed to pass one, which is the
-            #    `create_group` defect the #883 review found; logging it would hide the
+            #    `create_group` defect the examples#883 review found; logging it would hide the
             #    cause and leave the same silent never-completing batch.
             #
             # Loud is correct for both. A genuine broker failure is still handled below.
@@ -143,7 +143,7 @@ class GroupService:
         corr = event.get("correlationid")
         if not groupid or not corr:
             return
-        # #885 — a rejected envelope is evidence, not a fact. Before `add_group_member`,
+        # examples#885 — a rejected envelope is evidence, not a fact. Before `add_group_member`,
         # because a membership row is itself a state change: it makes an unknown
         # correlation a member of this batch and moves `members_seen`, which `progress`
         # and `completion_reason` both read.
@@ -167,14 +167,14 @@ class GroupService:
             store.mark_member_running(groupid, corr)
             return
         phase = event.get("phase") or "result"
-        # #956 — the mirror sets this on a replayed terminal whose signature checked out.
-        # Absent on the live path (where a failed verification is already inert, #885)
+        # examples#956 — the mirror sets this on a replayed terminal whose signature checked out.
+        # Absent on the live path (where a failed verification is already inert, examples#885)
         # and in every unsigned deployment, so the default is the truthful "nothing has
         # been proved about this row".
         verified = bool(event.get(ce.KEY_REPLAY_VERIFIED))
         first = store.mark_member_finished(groupid, corr, phase, verified=verified)
         if replay:
-            # #956 — ordering on the topic must not decide which terminal wins. If this
+            # examples#956 — ordering on the topic must not decide which terminal wins. If this
             # one verifies and the recorded one did not, it outranks it; otherwise
             # nothing moves. One-way, so a forger cannot use it to overwrite a genuine
             # answer — that would need a valid signature from an approved key.
@@ -201,7 +201,7 @@ class GroupService:
         groupid = event.get("groupid")
         if not groupid:
             return
-        # #885 — before `create_group` as well as before `complete_group`. A forged
+        # examples#885 — before `create_group` as well as before `complete_group`. A forged
         # `started` is not harmless noise: `expected` is the denominator every progress
         # figure divides by, and a forged `completed` ends a batch early and fires a
         # "finished" notification for work that never ran.

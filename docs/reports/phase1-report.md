@@ -819,7 +819,7 @@ That is RQ-1 behaving exactly as designed, observed by accident.
   exercised on a cluster. EventBridge does not sign.
   *(Superseded twice. **Phase 2**: EventBridge signs requests and group events,
   EventRunner signs terminal responses, and both verify against the approved-key set —
-  the reject paths have tests. See `../specs/0003-phase2-identity-on-the-event-path.md` §4. **#896**:
+  the reject paths have tests. See `../specs/0003-phase2-identity-on-the-event-path.md` §4. **eventing-lab#2**:
   `k8s_demo_flow.py --overlay kind-signed` now drives the signed path and asserts a
   forgery is refused, so the gap is a script that exists rather than one that does not.
   What remains unclosed is the run itself: as of 2026-10-12 **nobody has executed it
