@@ -8,9 +8,9 @@ namespace: kev1
 #
 # A separate overlay rather than a patch on `kind`, for two reasons:
 #
-#   * S3 and S5 (rossoctl/rossoctl#2593 and #2595) are explicitly **unsigned** milestones,
-#     so the plain `kind` path has to keep demonstrating the system without signatures —
-#     the before/after contrast is the demo.
+#   * S3 and S5 (rossoctl/rossoctl#2593 and rossoctl/rossoctl#2595) are explicitly
+#     **unsigned** milestones, so the plain `kind` path has to keep demonstrating the
+#     system without signatures — the before/after contrast is the demo.
 #   * `tests/test_manifests.py` asserts the `test` overlay mounts no credential at all
 #     so mock mode is auto-detected. Keeping enforcement out of the shared overlays
 #     means that assertion stays true and keeps meaning something.

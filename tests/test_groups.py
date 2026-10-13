@@ -577,7 +577,7 @@ def test_a_member_event_that_only_claims_a_group_is_not_trusted_as_a_member(svc)
     assert len(n.sent) == 1, "the groupid on the frame cannot buy silence"
 
 
-@pytest.mark.xfail(strict=True, reason="#904: in multi-tenant mode the store this "
+@pytest.mark.xfail(strict=True, reason="eventing-lab#5: in multi-tenant mode the store this "
                                       "lookup routes to is chosen by ce_userkey")
 def test_a_forged_frame_cannot_change_stores_to_escape_suppression(svc, tmp_path):
     """The multi-tenant member of the omission class, currently open.
@@ -594,8 +594,8 @@ def test_a_forged_frame_cannot_change_stores_to_escape_suppression(svc, tmp_path
     standing between the stripped frame and suppression is the routing itself.
 
     Pre-existing (the old code called `_store_for` too), closed for single-tenant by
-    this PR, and tracked as #904 — where the fix is to resolve the store from the
-    ownership index, which the forger does not supply. This test is
+    this PR, and tracked as eventing-lab#5 — where the fix is to resolve the store
+    from the ownership index, which the forger does not supply. This test is
     `xfail(strict=True)` so it records the hole and flips to a pass the moment the
     fix lands."""
     from eventbridge.group_service import GroupService

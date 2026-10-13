@@ -121,7 +121,7 @@ not a live count — see §5/M4 before touching it.)
 
 | Seam | Named CNCF integration | Code status |
 |---|---|---|
-| Cold-start identity gap | SPIRE → KEDA | ❌ **No SPIRE/SPIFFE/SVID in `eventing/`.** 8 mentions across 4 files, all prose, all aspirational. (`mcp/wiki_memory_tool/` does ship header-simulated SPIFFE identity — a different component, and its own README notes there is no real SVID verification) |
+| Cold-start identity gap | SPIRE → KEDA | ❌ **No SPIRE/SPIFFE/SVID anywhere.** 6 `spiffe` mentions across 2 files, both of them this note and the demo script — zero in the non-markdown tree. The closest the code comes is `shared/keyset.py`'s docstring naming workload attestation only to disclaim it ("What it does not do is attest anything"). Re-counted after the extraction from `rossoctl/examples`: the old figure said 8 across 4 files and cited `mcp/wiki_memory_tool/`, neither of which exists in this repo |
 | Trust-scope drift | SPIRE → egress sidecar | ❌ **No NetworkPolicy, no Istio, no AuthorizationPolicy, no sidecar** |
 | Unverified delivery | CloudEvents verifier → Knative trigger | 🟡 Verification exists and is real; **no Knative** (Strimzi instead, which the abstract permits) |
 | Unbound audit | event bus → work record | 🟡 `ce_causationid` binds response to request; the replay path now verifies `group.completed` and lets a verified member terminal outrank an unverified one (examples#955, examples#956) — it cannot refuse unsigned pre-signing history, which is a property of the history rather than of the check |

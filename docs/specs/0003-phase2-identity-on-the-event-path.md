@@ -530,9 +530,13 @@ opposite directions, and only one of them is loud.**
   non-terminal frame without it is pushed, stored in the member's transcript and shown
   on the group page; a forged terminal without it is pushed at priority 5 even with
   `NTFY_GROUP_NOTIFY_ERRORS` off, and does not count the member as failed.
-  ([examples#891](https://github.com/rossoctl/examples/issues/891)) — §8.5.4 is the general rule
-  this is an instance of, and the fix is to decide on group membership from the store
-  rather than on the groupid the frame supplies.
+  ([examples#891](https://github.com/rossoctl/examples/issues/891), closed — the
+  single-tenant half) — §8.5.4 is the general rule this is an instance of, and the fix is
+  to decide on group membership from the store rather than on the groupid the frame
+  supplies. **The multi-tenant half is still open as
+  [eventing-lab#5](https://github.com/rossoctl/eventing-lab/issues/5)**: in `multi` mode
+  the store a frame routes to is chosen by `ce_userkey`, which the forger controls in
+  exactly the same way, so omitting it routes to `shared/` and escapes suppression again.
 
 ### 8.3 Four things about the keys
 

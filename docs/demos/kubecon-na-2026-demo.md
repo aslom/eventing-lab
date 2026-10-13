@@ -6,9 +6,10 @@ which holds the abstract, the status assessment and the reasoning; this document
 thing you hold while recording.
 
 **Read this first:** every act below is marked **🟢 DOABLE TODAY**, **🟡 PARTIAL**, or
-**🔴 NEEDS WORK**. The marks are the point of the document. Four of the seven acts are
-recordable this afternoon against a Kind cluster; one needs a cluster run that is scripted
-but has never been executed; two need code that does not exist.
+**🔴 NEEDS WORK**. The marks are the point of the document. Three of the seven acts are
+recordable this afternoon against a Kind cluster; three more are scripted and unit-tested but
+blocked behind a single cluster run that has never been executed; one needs code that does not
+exist, plus three further beats in §9.
 
 Nothing here is narrated over a system that does not do it. Where a beat is cut, the script
 says what to say instead — per the talk's own thesis, an unchecked control claim is the
@@ -302,8 +303,9 @@ what turns §7's transition into a demonstrated claim.
 
 ### 9.3 No SVID, no consumption  (R1) — the SPIRE decision
 
-Two of the four seams name SPIRE. **There is no SPIRE** — the only `spiffe` mention in the
-entire non-markdown tree is a comment in `shared/keyset.py`.
+Two of the four seams name SPIRE. **There is no SPIRE** — and no `spiffe` mention anywhere in
+the non-markdown tree. The closest the code comes is `shared/keyset.py`'s docstring, which
+names workload attestation only to disclaim it: *"What it does not do is attest anything."*
 
 The note's §3 recommends **Option A′: real SPIRE, identity gate only.** Deploy SPIRE server
 and agent on Kind; an init container blocks on the Workload API socket until an SVID is
