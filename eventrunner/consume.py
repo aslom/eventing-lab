@@ -96,6 +96,7 @@ class Consumer(threading.Thread):
         # mid-run.
         self._keyset = keyset
         self._rejected_unsigned = 0
+        self._rejected_submitter = 0
         self._paused = False
 
     # ---- lifecycle ----
@@ -120,6 +121,14 @@ class Consumer(threading.Thread):
         `skipped_stale`: both commit the offset without running, and an operator
         needs to know which one is happening."""
         return self._rejected_unsigned
+
+    @property
+    def rejected_submitter(self) -> int:
+        """Requests refused because `ce_submitter` is absent from
+        `ER_ALLOWED_SUBMITTERS`. Counted apart from `rejected_unsigned` because the
+        operator response differs: a bad signature means someone is forging, an
+        unlisted submitter usually means the allowlist is out of date."""
+        return self._rejected_submitter
 
     def _build_consumer(self) -> KafkaConsumer:
         return KafkaConsumer(
@@ -292,6 +301,31 @@ class Consumer(threading.Thread):
                 self._rejected_unsigned += 1
                 _elog(f"rejecting unsigned/badly-signed request corr={corr}: {why} "
                       f"(ER_REQUIRE_SIGNATURE=true) — offset committed, not retried")
+                self._skip(topic, partition, offset)
+                return
+
+        # Who ASKED, which is a different question from who signed.
+        #
+        # Deliberately AFTER the signature check, and the order is the control: a
+        # verified signature is what makes `submitter` trustworthy, because the
+        # attribute is in `signing.SIGNED_ATTRS` and so cannot be rewritten in flight.
+        # Checking it first would filter on a value the caller chose, and would also
+        # report the wrong cause — an unsigned forgery claiming an approved login would
+        # be counted as an allowlist miss rather than as a forgery.
+        #
+        # The list is read at STARTUP (`config.from_env`), never per record — the same
+        # rule as the keyset. That is what makes trust-scope drift real rather than
+        # contrived: edit the list while replicas are 0 and the next wake enforces the
+        # new one, because no long-lived process is holding the old decision.
+        if self._cfg.allowed_submitters:
+            submitter = str(evt.get(ce.EXT_SUBMITTER, "") or "").strip().lower()
+            if submitter not in self._cfg.allowed_submitters:
+                self._rejected_submitter += 1
+                _elog(f"rejecting request from an unapproved submitter corr={corr}: "
+                      f"submitter={submitter or '(absent)'} is not in "
+                      f"ER_ALLOWED_SUBMITTERS "
+                      f"({len(self._cfg.allowed_submitters)} approved) — "
+                      f"offset committed, not retried")
                 self._skip(topic, partition, offset)
                 return
 

@@ -47,16 +47,23 @@ class Rec:
 
 def request_record(corr="brave-otter-4718", *, offset=0, partition=0,
                    topic="kev1-requests", mode="start", when=None, prompt="hi",
-                   seed=None, kid=None):
+                   seed=None, kid=None, submitter=None):
     """One Kafka record carrying a request event.
 
     `seed` signs it before serialisation, the same order `kafka_out.publish_request`
     uses — so a signed record here travels the wire exactly as a real one does,
     rather than being signed over attributes the codec would have changed.
+
+    `submitter` sets `ce_submitter` BEFORE signing, which is the only order worth
+    testing: the attribute is in `S.SIGNED_ATTRS`, so setting it afterwards would
+    produce an event whose signature does not cover it — the thing the allowlist is
+    meant to be able to trust, untrusted.
     """
     attrs = {}
     if when is not None:
         attrs["time"] = when
+    if submitter is not None:
+        attrs[ce.EXT_SUBMITTER] = submitter
     evt = ce.new_event(type=ce.TYPE_REQUEST, source="rossoctl://eventbridge/test",
                        datacontenttype="application/json",
                        correlationid=corr, sessionuuid=ce.session_uuid(corr),
@@ -644,5 +651,165 @@ def test_the_consumer_thread_survives_a_rejected_request(tmp_path):
                  keyset=approved_keyset(tmp_path))
     drive(c, fake, until=lambda: router.submitted)
     assert c.rejected_unsigned == 1, "the first record was refused"
+    assert len(router.submitted) == 1, "and the loop went on to process the second"
+    assert router.submitted[0]["correlationid"] == "calm-badger-1234"
+
+
+# ---- who ASKED: the submitter allowlist (R2) ---------------------------------
+#
+# A different question from every test above, and the distinction is the point. Those
+# ask "did an approved key sign this?". These ask "is this person allowed to cause work
+# here?". Before this the runner only ever asked the first, so any approved bridge could
+# wake any agent on behalf of anyone.
+#
+# Same three assertions as the signature tests, for the same reason: a refusal that
+# loses the offset is a poison pill, and a refusal nobody can count is
+# indistinguishable from "always refuses".
+
+def _submitter_setup(tmp_path, *, submitter, allowed, signed=True, **over):
+    tp = TopicPartition("kev1-requests", 0)
+    rec = request_record(offset=0, submitter=submitter,
+                         seed=SEED if signed else None,
+                         kid="runner-01" if signed else None)
+    fake = FakeConsumer([{tp: [rec]}], committed={tp: OffsetAndMetadata(0, "", -1)})
+    router = RecordingRouter()
+    cfg = cfg_for(tmp_path, require_signature=signed,
+                  allowed_submitters=tuple(allowed), **over)
+    ks = approved_keyset(tmp_path) if signed else None
+    return fake, router, Consumer(cfg, router, keyset=ks)
+
+
+def test_no_allowlist_means_no_submitter_enforcement(tmp_path):
+    """The default, and the one that must not change: an empty list means "not
+    configured", NOT "nobody approved".
+
+    The opposite reading would make every existing deployment stop processing work the
+    moment it upgraded — a missing variable turning into a closed door.
+    `ghauth.is_allowed` deliberately reads empty as deny, because there an empty list
+    with sign-in configured means the operator forgot to say who may submit; here the
+    variable IS the opt-in.
+    """
+    fake, router, c = _submitter_setup(tmp_path, submitter="nobody-special",
+                                       allowed=())
+    drive(c, fake, until=lambda: router.submitted)
+    assert len(router.submitted) == 1, "with no allowlist, any submitter runs"
+    assert c.rejected_submitter == 0
+
+
+def test_an_approved_submitter_runs(tmp_path):
+    """The accept side. Without it, every refusal test below would also pass against a
+    control that refuses everything."""
+    fake, router, c = _submitter_setup(tmp_path, submitter="alice",
+                                       allowed=("alice", "bob"))
+    drive(c, fake, until=lambda: router.submitted)
+    assert len(router.submitted) == 1
+    assert c.rejected_submitter == 0
+
+
+def test_an_unlisted_submitter_is_refused(tmp_path):
+    fake, router, c = _submitter_setup(tmp_path, submitter="mallory",
+                                       allowed=("alice", "bob"))
+    drive(c, fake, until=lambda: fake.commits)
+    assert router.submitted == [], "an unapproved submitter must not reach the router"
+    assert c.rejected_submitter == 1
+    assert c.rejected_unsigned == 0, "it was signed; only the submitter was wrong"
+    assert {("kev1-requests", 0): 1} in fake.commits, "but its offset must advance"
+
+
+def test_a_request_with_NO_submitter_is_refused_when_a_list_is_configured(tmp_path):
+    """The half-configured case a reader actually hits: an event from a bridge that
+    does not set `ce_submitter` at all — anonymous auth, or an older EventBridge.
+    Absent must not read as approved."""
+    fake, router, c = _submitter_setup(tmp_path, submitter=None, allowed=("alice",))
+    drive(c, fake, until=lambda: fake.commits)
+    assert router.submitted == []
+    assert c.rejected_submitter == 1
+    assert {("kev1-requests", 0): 1} in fake.commits
+
+
+def test_the_submitter_comparison_is_case_insensitive(tmp_path):
+    """GitHub logins are case-insensitive, so `Alice` and `alice` are one account.
+    Comparing case-sensitively would refuse a genuinely approved person over how the
+    operator typed the list, which reads as a broken deployment rather than a policy."""
+    fake, router, c = _submitter_setup(tmp_path, submitter="ALICE",
+                                       allowed=("alice",))
+    drive(c, fake, until=lambda: router.submitted)
+    assert len(router.submitted) == 1
+    assert c.rejected_submitter == 0
+
+
+def test_the_signature_is_checked_BEFORE_the_submitter(tmp_path):
+    """Ordering, pinned — and it is the control, not a preference.
+
+    A verified signature is what makes `submitter` worth reading: the attribute is in
+    `S.SIGNED_ATTRS`, so on a signed event it cannot be rewritten in flight. Checking
+    the allowlist first would filter on a value the caller chose, and would also report
+    the wrong cause — an unsigned forgery claiming an approved login would be counted
+    as an allowlist miss rather than as a forgery.
+    """
+    tp = TopicPartition("kev1-requests", 0)
+    # Signed by a key nobody approved, claiming a login that IS on the list.
+    rec = request_record(offset=0, submitter="alice", seed=SEED2, kid="runner-99")
+    fake = FakeConsumer([{tp: [rec]}], committed={tp: OffsetAndMetadata(0, "", -1)})
+    router = RecordingRouter()
+    c = Consumer(cfg_for(tmp_path, require_signature=True,
+                         allowed_submitters=("alice",)),
+                 router, keyset=approved_keyset(tmp_path))
+    drive(c, fake, until=lambda: fake.commits)
+    assert router.submitted == []
+    assert c.rejected_unsigned == 1, "the signature check must fire first"
+    assert c.rejected_submitter == 0, "...and the allowlist must not also claim it"
+
+
+def test_the_allowlist_is_enforced_even_without_signature_enforcement(tmp_path):
+    """It really does refuse, so the startup banner must not call it advisory.
+
+    What changes without signature enforcement is what the list is WORTH, not whether
+    it runs: `ce_submitter` is then whatever the publisher typed, so the list stops
+    honest clients and nobody else. `__main__.py` prints a WARNING saying exactly that.
+    Asserting the behaviour here keeps the banner honest — a banner that said
+    "advisory" while the code refused would be its own §8 finding.
+    """
+    fake, router, c = _submitter_setup(tmp_path, submitter="mallory",
+                                       allowed=("alice",), signed=False)
+    drive(c, fake, until=lambda: fake.commits)
+    assert router.submitted == []
+    assert c.rejected_submitter == 1
+    assert c.rejected_unsigned == 0, "signatures were not being checked at all"
+
+
+def test_a_stale_request_is_dropped_before_the_submitter_is_checked(tmp_path):
+    """Same ordering rule as the signature guard: a replayed day-old event is history,
+    not an attack, and must be discarded by the age guard rather than reported as an
+    allowlist violation."""
+    tp = TopicPartition("kev1-requests", 0)
+    old = request_record(offset=0, when=_iso(86400), submitter="mallory")
+    fake = FakeConsumer([{tp: [old]}], committed={tp: OffsetAndMetadata(0, "", -1)})
+    router = RecordingRouter()
+    c = Consumer(cfg_for(tmp_path, allowed_submitters=("alice",),
+                         max_request_age_s=3600), router)
+    drive(c, fake, until=lambda: fake.commits)
+    assert router.submitted == []
+    assert c.skipped_stale == 1, "the age guard must fire..."
+    assert c.rejected_submitter == 0, "...instead of the allowlist"
+
+
+def test_the_loop_survives_an_allowlist_refusal(tmp_path):
+    """Same guarantee as `test_the_consumer_thread_survives_a_rejected_request`: a new
+    reject path that kills the thread leaves a pod reporting healthy and consuming
+    nothing, which is the worst failure mode this file guards against."""
+    tp = TopicPartition("kev1-requests", 0)
+    bad = request_record(corr="brave-otter-4718", offset=0, submitter="mallory",
+                         seed=SEED, kid="runner-01")
+    good = request_record(corr="calm-badger-1234", offset=1, submitter="alice",
+                          seed=SEED, kid="runner-01")
+    fake = FakeConsumer([{tp: [bad, good]}],
+                        committed={tp: OffsetAndMetadata(0, "", -1)})
+    router = RecordingRouter()
+    c = Consumer(cfg_for(tmp_path, require_signature=True,
+                         allowed_submitters=("alice",)),
+                 router, keyset=approved_keyset(tmp_path))
+    drive(c, fake, until=lambda: router.submitted)
+    assert c.rejected_submitter == 1, "the first record was refused"
     assert len(router.submitted) == 1, "and the loop went on to process the second"
     assert router.submitted[0]["correlationid"] == "calm-badger-1234"
