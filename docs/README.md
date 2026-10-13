@@ -9,7 +9,7 @@ document goes.
 
 | If you want to…                                      | Read                                                 |
 | ---------------------------------------------------- | ---------------------------------------------------- |
-| Understand the whole system in one sitting           | `eventing-lab-overview.md`                              |
+| Understand the whole system in one sitting           | [`eventing-lab-overview.md`](eventing-lab-overview.md)                            |
 | Know **why** a decision was made                     | [`adrs/`](adrs/) — one decision per file, permanent  |
 | Get the **full design** of a subsystem               | [`specs/`](specs/) — deep dives, living              |
 | Know what a phase **actually built and measured**    | [`reports/`](reports/) — append-only, never rewritten |
@@ -29,7 +29,7 @@ results, including the parts that went wrong.
 
 | Artifact     | Answers                                           | Retention                                                      | Home                        |
 | ------------ | ------------------------------------------------- | -------------------------------------------------------------- | --------------------------- |
-| **Overview** | the whole picture, briefly                        | committed, **kept current**                                    | `docs/eventing-lab-overview.md` |
+| **Overview** | the whole picture, briefly                        | committed, **kept current**                                    | [`eventing-lab-overview.md`](eventing-lab-overview.md) |
 | **Spec**     | _what & why_, in depth — alternatives, trade-offs | committed, **revised in place** with a version changelog       | [`specs/`](specs/)          |
 | **ADR**      | one significant decision + consequences           | committed, **permanent & immutable**                           | [`adrs/`](adrs/)            |
 | **Report**   | what a phase built, **measured**; deltas; findings | committed, **append-only — never rewritten**                   | [`reports/`](reports/)      |

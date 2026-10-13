@@ -3,21 +3,21 @@
 # CODEOWNERS is NOT inherited from the org — GitHub requires it per-repo, so this file must
 # name a real team or the repo gets no review assignment at all.
 #
-# Replace maintainers with the owning team (e.g. @rossoctl/eventing-lab-maintainers) and make sure the
-# team has write access to this repo, or GitHub silently ignores these rules.
+# The owning team is @rossoctl/eventing-lab-maintainers. It must keep write access to this
+# repo, or GitHub silently ignores every rule below.
 
 # Default owners for everything
-* @rossoctl/maintainers
+* @rossoctl/eventing-lab-maintainers
 
 # The documentation convention and its gates. Changes here affect every contributor's
 # workflow, so they get maintainer review.
-/docs/README.md       @rossoctl/maintainers
-/docs/specs/README.md @rossoctl/maintainers
-/docs/adrs/           @rossoctl/maintainers
-/CLAUDE.md            @rossoctl/maintainers
+/docs/README.md       @rossoctl/eventing-lab-maintainers
+/docs/specs/README.md @rossoctl/eventing-lab-maintainers
+/docs/adrs/           @rossoctl/eventing-lab-maintainers
+/CLAUDE.md            @rossoctl/eventing-lab-maintainers
 
 # CI and governance
-/.github/             @rossoctl/maintainers
-/scripts/             @rossoctl/maintainers
-/LICENSE              @rossoctl/maintainers
-/GOVERNANCE.md        @rossoctl/maintainers
+/.github/             @rossoctl/eventing-lab-maintainers
+/scripts/             @rossoctl/eventing-lab-maintainers
+/LICENSE              @rossoctl/eventing-lab-maintainers
+/GOVERNANCE.md        @rossoctl/eventing-lab-maintainers
