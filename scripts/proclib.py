@@ -1,6 +1,6 @@
 """Subprocess + assertion helpers shared by every script in this directory.
 
-Phase 1 replaced the bash scripts with Python (DESIGN_PHASE1.md §9). The reason
+Phase 1 replaced the bash scripts with Python (docs/specs/0002-phase1-keda-kubernetes.md §9). The reason
 was not taste: a bash harness reported `RESULT: PASS` for a `docker` command that
 never ran, because `$?` had captured a `sed` in the same pipeline. A test harness
 that passes when the command did not execute is worse than no harness.

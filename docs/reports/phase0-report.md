@@ -1,6 +1,11 @@
 # IMPLEMENTATION_REPORT0 — Phase 0 build & test evidence
 
-Design under implementation: `DESIGN_PHASE0.md`
+Status: Complete <!-- Phase 0 closed; superseded in deployment terms by Phase 1 -->
+Date: 2026-10-01
+Spec: [`../specs/0001-phase0-local-wire-contract.md`](../specs/0001-phase0-local-wire-contract.md)
+Covers: the full Phase 0 wire contract — CloudEvent envelope, correlation/session identity, per-correlation FIFO router
+
+Design under implementation: [`../specs/0001-phase0-local-wire-contract.md`](../specs/0001-phase0-local-wire-contract.md)
 Prerequisites verified working: `python3.14t` (GIL disabled), `uv`, `kafka-python 3.0.11`, `cloudevents 2.2.0`, Kafka 4.x on `localhost:9092`, `claude` CLI 2.1.278.
 
 ---
@@ -49,7 +54,7 @@ rossoctl-keda1/
     └── OPENAPI.md                         (human-readable API pointer)
 ```
 
-Deviations from DESIGN_PHASE0.md:
+Deviations from ../specs/0001-phase0-local-wire-contract.md:
 
 - **CloudEvent Kafka binding is in `shared/ce.py`**, not the SDK. The `cloudevents` 2.2.0 package's `core.bindings.kafka` module requires a different event class than the legacy `cloudevents.v1.http.CloudEvent`, and the two APIs are not compatible. Rather than pin to a moving target, `ce.py` implements the CloudEvents 1.0 §3.1 Kafka binary binding directly (~110 lines): headers with `ce_` prefix, JSON-encoded value when `datacontenttype=application/json`. Wire format is unchanged; consumers can be swapped later.
 - **Thread subclasses do not use the name `_bootstrap`** for their Kafka bootstrap string. `threading.Thread._bootstrap` is the internal method the thread runtime calls at `start()`; shadowing it produced a cryptic `TypeError: thread function must be callable` on Python 3.14t. Renamed to `_bootstrap_servers` throughout. Noted here for anyone porting to a new Thread subclass.
@@ -176,6 +181,24 @@ The stdlib-only skill CLI (`urllib.request`, no external deps) posts to EventBri
 - **Legacy events on `requests` topic** — the topic still contains events from prior failed experiments. EventRunner now skips malformed events with a log line, which is enough for Phase 0. Purging the topic requires deleting + recreating it (broker default is `delete.topic.enable=true` on Kafka 4 but topics linger); alternatively, `kafka-consumer-groups --reset-offsets --to-latest` when the consumer group is inactive.
 - **`--no-session-persistence` is intentionally not set** on EventRunner (Q&E-4). If a future workload should never be resumed, the runner needs an opt-in flag on the request event.
 - **Signatures (JWS on CloudEvent envelope)** — DESIGN §10.3 remains deferred to Phase 1.
+
+---
+
+## 4a. What is NOT verified
+
+Phase 0 ran on one developer machine, in mock mode for most of it. Specifically not
+established by anything above:
+
+- **Nothing was signed.** JWS on the CloudEvent envelope was deferred (§4, design §10.3), so
+  no claim here is about authenticity or integrity — only about shape and ordering.
+- **No Kubernetes, no KEDA, no scale-to-zero.** Every figure comes from two long-lived local
+  processes against a local Kafka. Nothing here predicts rebalance, cold-start or replica
+  behaviour; that is Phase 1's subject.
+- **No real-`claude` end-to-end run.** `tests_e2e/` was not implemented; the §2.2 smoke test
+  covers the same wire path in mock mode. Real-CLI behaviour against ntfy is unmeasured.
+- **No performance or resource numbers.** Throughput, latency and memory were not measured at
+  all — the §2 results are correctness tests, not benchmarks.
+- **No multi-user or tenancy isolation.** Phase 0 has a single implicit caller.
 
 ---
 

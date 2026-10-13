@@ -1,7 +1,8 @@
 # DESIGN — Phase 1: KEDA-scaled Kubernetes deployment
 
-Status: draft (revision 2)
-Scope: **delta over `DESIGN_PHASE0.md`.** Read that first — this document only
+Version: 2.0 — October 2026 <!-- revision 2: the cluster findings and the agent-groups design (§21) -->
+Status: Implemented <!-- measured in ../reports/phase1-report.md -->
+Scope: **delta over `../specs/0001-phase0-local-wire-contract.md`.** Read that first — this document only
 records what changes when the Phase 0 demo moves from a laptop onto a
 Kubernetes cluster with Strimzi-managed Kafka and KEDA-driven scaling.
 
@@ -694,7 +695,7 @@ checks 8–9 exist before anything is deployed.
 | 13 | **The claude CLI image is anonymously pullable and carries the CLI** (demo overlay only; skipped otherwise) | image missing, or built where the bundled `bun` cannot execute | T2.4's gate. Without it every real run fails with `claude binary not found` — and mock mode is exactly what stops the e2e from catching that. Runs on a cluster node rather than at build time because the CLI's `bun` aborts under QEMU user-mode emulation, so a cross-built image cannot execute it on an arm64 builder |
 
 Check 13 was added with the demo overlay and this table documented 12 for a while, which
-`IMPLEMENTATION_REPORT1.md` and `README_PHASE1.md` both reference by number — so the
+`../reports/phase1-report.md` and `../demos/phase1-demo.md` both reference by number — so the
 count is worth keeping right rather than discovering later that the design documents 12
 of 13.
 

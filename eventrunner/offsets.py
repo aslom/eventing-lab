@@ -1,6 +1,6 @@
 """Deferred offset commits, so consumer lag means "work not finished".
 
-Resolves DESIGN_PHASE1.md RQ-1 and, with it, the §7.1 scale-down race.
+Resolves docs/specs/0002-phase1-keda-kubernetes.md RQ-1 and, with it, the §7.1 scale-down race.
 
 Phase 0 committed immediately after handing a message to the Router, so lag hit
 zero the instant a message was *read* — while the agent was still streaming.

@@ -62,7 +62,7 @@ DIGEST_ANNOTATION = "rossoctl.dev/manifest-sha256"
 SECRET_NAME = "anthropic-credentials"
 NTFY_SECRET_NAME = "eventbridge-ntfy"
 # §11 — one seed Secret per service, never shared: a single seed would let either side
-# forge the other's signatures (DESIGN_PHASE2.md §4.3). The keyset is a ConfigMap
+# forge the other's signatures (docs/specs/0003-phase2-identity-on-the-event-path.md §4.3). The keyset is a ConfigMap
 # because it holds only public keys, and that location is what keeps the distinction
 # reviewable (shared/keyset.py).
 EB_SIGNING_SECRET = "eventbridge-signing-key"
@@ -236,7 +236,7 @@ def ensure_signing_material(k: Kubectl, c: Checks, ns: str, keydir: str | None, 
     **Two Secrets, one per service.** A single shared seed would mean EventBridge holds
     the key it verifies runner responses with, so it could forge any agent's answer and
     an agent could forge another's — the property that ruled out HMAC entirely
-    (DESIGN_PHASE2.md §4.3). Mounting separate Secrets is what keeps "only this agent
+    (docs/specs/0003-phase2-identity-on-the-event-path.md §4.3). Mounting separate Secrets is what keeps "only this agent
     could have produced this" true.
 
     A seed is a private key, so it gets the same handling as the API token: applied via

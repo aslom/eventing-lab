@@ -1,4 +1,4 @@
-"""Per-user stores and the LRU that bounds them. DESIGN_PHASE3.md §6.1.
+"""Per-user stores and the LRU that bounds them. docs/specs/0004-phase3-tenancy-agents-triggers.md §6.1.
 
 Two properties carry the weight:
 

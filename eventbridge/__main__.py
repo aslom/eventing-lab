@@ -102,7 +102,7 @@ def main() -> int:
             raise SystemExit(
                 "[eventbridge] EB_TENANCY_MODE=multi requires EB_USER_REGISTRY_PATH. "
                 "Per-user isolation has no meaning without a list of users to isolate. "
-                "See DESIGN_PHASE3.md §2.5.")
+                "See docs/specs/0004-phase3-tenancy-agents-triggers.md §2.5.")
         if not len(users):
             # Phase 2 §2.4's reading, for Phase 2's reason: the other one turns a
             # missing file into an open door.

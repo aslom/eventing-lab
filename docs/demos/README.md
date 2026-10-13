@@ -6,12 +6,15 @@ being performed live in front of an audience.
 
 ## What lives here
 
-| Demo                                 | Shows                                  | Time    |
-| ------------------------------------ | -------------------------------------- | ------- |
-| `<name>-demo.md`                     | <the claim, in one line>               | ~10 min |
+| Demo                                     | Shows                                                                            |
+| ---------------------------------------- | -------------------------------------------------------------------------------- |
+| [`phase0-demo.md`](phase0-demo.md)       | A Kafka message wakes an agent on one laptop, and every step streams back out    |
+| [`phase1-demo.md`](phase1-demo.md)       | The same path on Kubernetes, scaling from zero agent replicas on consumer lag    |
 
-<!-- One row per demo. The "Shows" cell is the claim, not the topic: a reader decides from
-     this table alone whether this is the demo they want. -->
+Both are runbooks you read while typing, which is why they live here rather than in
+[`../notes/`](../notes/). `phase1-demo.md` covers all four ways to run it — locally without
+containers, under Docker, on Kind, and on OpenShift — and `phase0-demo.md` is still the more
+detailed account of the laptop path.
 
 ## Demo vs. smoke test vs. spec
 

@@ -10,18 +10,18 @@ and the honest talk they buy. §4 is the full plan it was cut from.
 
 This file is the reference other analyses should cite. It is deliberately specific
 about what is **not** done, because the talk's own thesis is that unchecked control
-claims are where compositions leak — and `DESIGN_PHASE2.md` §8 is the record of this
+claims are where compositions leak — and `../specs/0003-phase2-identity-on-the-event-path.md` §8 is the record of this
 repository making thirteen of them.
 
 Read alongside:
 
 | For | Read |
 |---|---|
-| The wire contract that must not change | [`DESIGN_PHASE0.md`](DESIGN_PHASE0.md) |
-| KEDA scaling, scale-to-zero, the §16 gaps | [`DESIGN_PHASE1.md`](DESIGN_PHASE1.md) |
-| Identity on the event path, **and §8's thirteen findings** | [`DESIGN_PHASE2.md`](DESIGN_PHASE2.md) |
-| Per-user isolation, `AgentSpec`, triggers (design only) | [`DESIGN_PHASE3.md`](DESIGN_PHASE3.md) |
-| Measured results, what is blocked | [`IMPLEMENTATION_REPORT1.md`](IMPLEMENTATION_REPORT1.md) |
+| The wire contract that must not change | [`../specs/0001-phase0-local-wire-contract.md`](../specs/0001-phase0-local-wire-contract.md) |
+| KEDA scaling, scale-to-zero, the §16 gaps | [`../specs/0002-phase1-keda-kubernetes.md`](../specs/0002-phase1-keda-kubernetes.md) |
+| Identity on the event path, **and §8's thirteen findings** | [`../specs/0003-phase2-identity-on-the-event-path.md`](../specs/0003-phase2-identity-on-the-event-path.md) |
+| Per-user isolation, `AgentSpec`, triggers (design only) | [`../specs/0004-phase3-tenancy-agents-triggers.md`](../specs/0004-phase3-tenancy-agents-triggers.md) |
+| Measured results, what is blocked | [`../reports/phase1-report.md`](../reports/phase1-report.md) |
 
 ---
 
@@ -101,7 +101,7 @@ Three notes that matter more than the table:
 
 Assessed 2026-10-05 against `main`. Method: read all nine `agentdocs/` files and the
 full source, then **ran the identity decision functions** rather than trusting
-docstrings — which is `DESIGN_PHASE2.md` §8.6's rule, and it changed two conclusions.
+docstrings — which is `../specs/0003-phase2-identity-on-the-event-path.md` §8.6's rule, and it changed two conclusions.
 
 **Refreshed 2026-10-12** for the §8 bug fixes (§2.4, §2.5) and for #896 closing the
 "nothing can drive `kind-signed`" gap (§2.6). The seam and beat tables above are
@@ -113,7 +113,7 @@ laptop with the `claude` CLI on `PATH`, 899 passed and 5 skipped — the three e
 skips are `test_agentspec.py`'s pinned-CLI check plus `test_graceful_shutdown.py`, which
 needs a reachable Kafka. The five constant skips are `test_manifests.py`'s
 `no reachable cluster` cases. Quote the collected count and the environment, not a bare
-pass figure. (`DESIGN_PHASE2.md` §6 says 490/5; that is Phase 2's own delta measurement,
+pass figure. (`../specs/0003-phase2-identity-on-the-event-path.md` §6 says 490/5; that is Phase 2's own delta measurement,
 not a live count — see §5/M4 before touching it.)
 
 ### 2.1 The four seams
@@ -128,7 +128,7 @@ not a live count — see §5/M4 before touching it.)
 ### 2.2 What is genuinely done and demo-ready
 
 - **KEDA scale-to-zero, measured on two clusters.** OpenShift (ykt1) and Kind. The only
-  sourced figures are `IMPLEMENTATION_REPORT1.md` §3's: wake latency **1.0–5.0 s** on
+  sourced figures are `../reports/phase1-report.md` §3's: wake latency **1.0–5.0 s** on
   ykt1 and **2.2–4.3 s** on Kind; scale back to zero **30–31 s** with
   `cooldownPeriod: 30`; image pull **5.1 s** cold (245 MB), 454 ms–2.45 s warm. Earlier
   drafts of this file quoted 1.7–3.0 s, ~14 s and 22 s, which appear in no other document
@@ -185,7 +185,7 @@ Two rows moved, and both are worth saying out loud because they are the talk's s
 
 **(D) is a deliberate policy, not a bug.** `emit()` signs terminal events only, because
 it runs per `stdout` frame and Ed25519 costs **222 ms to sign, 227 ms to verify** here
-(`IMPLEMENTATION_REPORT1.md` §9, measured — not the ~150–200 ms the docstrings
+(`../reports/phase1-report.md` §9, measured — not the ~150–200 ms the docstrings
 estimate); signing every frame would
 add minutes to a chatty run. The verifier matches that policy. The honest limit: this
 proves *who finished a run*, not *what it said along the way*. Say that on stage.
@@ -209,7 +209,7 @@ after:  batch open, transcript holds the genuine answer, rejected=2
 
 **This is the talk's thesis with a measurement attached**: a control that computes the
 right verdict and does not act on it. The verdict was never wrong; the path to the
-outcome was never followed. That is `DESIGN_PHASE2.md` §8.5.1 — *a claim about an
+outcome was never followed. That is `../specs/0003-phase2-identity-on-the-event-path.md` §8.5.1 — *a claim about an
 outcome has to follow the path to that outcome, not stop at the check* — and the test
 that was supposed to catch it asserted the verdict on a callback dict, so it could not
 have.
@@ -220,7 +220,7 @@ is bounded by what a signature can prove about a record published before signing
 
 ### 2.5 The §8 bugs, four of five now fixed
 
-From the `DESIGN_PHASE2.md` §8 docs review. All five were open at the 2026-10-05
+From the `../specs/0003-phase2-identity-on-the-event-path.md` §8 docs review. All five were open at the 2026-10-05
 assessment; **as of 2026-10-12 only #887 remains**, which changes what the §8 section can
 be demoed as — see the note under the table.
 
@@ -244,7 +244,7 @@ proposed demoing that asymmetry in place of the cut egress beat — so demo it
 **before/after** rather than live, since the bug no longer reproduces. The asymmetry is
 the point, not the bug.
 
-#887 also defeats Phase 2 §3.1's capability-URL argument: `GET /v0/groups` returns the
+Issue #887 also defeats Phase 2 §3.1's capability-URL argument: `GET /v0/groups` returns the
 100 most recent groups without sign-in, and `/v0/groups/{id}/status` lists every member's
 correlation id. For any conversation in a group, the capability is published.
 
@@ -270,7 +270,7 @@ for signing cost or for a wake latency that includes it — §6.1's instruction 
 cluster a number comes from applies doubly here, because the honest answer is currently
 "none". The remaining work on this beat is an execution, not a build.
 
-This matters because of this repository's own precedent: `DESIGN_PHASE2.md` §4.4 step 2
+This matters because of this repository's own precedent: `../specs/0003-phase2-identity-on-the-event-path.md` §4.4 step 2
 records that the signer/verifier policy mismatch (signing terminals only, verifying
 all-or-nothing) was found **by running against a live broker, never by a unit test** —
 because every test until then used terminal events.
@@ -281,7 +281,7 @@ because every test until then used terminal events.
 issuing and rotating the keys — replaces *where the keys come from* without changing a
 line of verification logic."
 
-`DESIGN_PHASE2.md` §8.3 already records that this is false, and it is worth repeating
+`../specs/0003-phase2-identity-on-the-event-path.md` §8.3 already records that this is false, and it is worth repeating
 here because it is load-bearing for the talk:
 
 - The verifier accepts **EdDSA only**; SPIRE issues EC or RSA.
@@ -408,9 +408,9 @@ repository's own precedent says unit tests do not catch this class of bug.
   `("test", "kind", "demo")`).
 - Add two demo stages: **a signed wake that verifies** (D2) and **a forged event that is
   refused** — the latter is the money shot and currently has no script.
-- Record the result in `IMPLEMENTATION_REPORT1.md` §8, which still says
+- Record the result in `../reports/phase1-report.md` §8, which still says
   `ER_REQUIRE_SIGNATURE=true` has no end-to-end run.
-- Confirm the signing cost on-cluster. `IMPLEMENTATION_REPORT1.md` §9 already measured
+- Confirm the signing cost on-cluster. `../reports/phase1-report.md` §9 already measured
   **222 ms / 227 ms** on a laptop — re-running it here gave 190/198 ms median, so treat
   ~190–230 ms as the pure-Python band and the hardware as the variable. This is a
   confirmation on cluster hardware, not a first measurement, and the wake-path latency
@@ -475,12 +475,12 @@ deliberately-denied call actually fails before relying on it.
 The talk will send people to this repository. Three fixes:
 
 - `keyset.py`'s "upgrade path changes no verification logic" claim — correct it per
-  `DESIGN_PHASE2.md` §8.3, in place, since the module docstring is what a reader lands on.
-- A footnote on `DESIGN_PHASE2.md` §6's test count pointing at §2's current figure.
+  `../specs/0003-phase2-identity-on-the-event-path.md` §8.3, in place, since the module docstring is what a reader lands on.
+- A footnote on `../specs/0003-phase2-identity-on-the-event-path.md` §6's test count pointing at §2's current figure.
   **Not** an overwrite: `490/5` is Phase 2's delta measurement and its "adds 40 over
   450/5" arithmetic depends on it. Small, but the talk's thesis is about claims that
   quietly stopped being true, and a historical measurement never stopped being true.
-- The `<!-- VERIFY -->` comments `DESIGN_PHASE2.md` §8.5.5 prescribes are now in this
+- The `<!-- VERIFY -->` comments `../specs/0003-phase2-identity-on-the-event-path.md` §8.5.5 prescribes are now in this
   file (§2.4, §2.5, §5/M1, §5/M3, §6.3) as of M4 — W5 is after the talk, which was too
   late for a document whose §5/M3 depends on #888 staying open. Re-check them here.
 
@@ -488,7 +488,7 @@ The talk will send people to this repository. Three fixes:
 
 - Minimal SPIRE (Option B). Treat as a separate, post-talk workstream unless everything
   else is done with weeks to spare.
-- Phase 3's `userkey` / per-user topic isolation is drafted (`DESIGN_PHASE3.md` §2–§3)
+- Phase 3's `userkey` / per-user topic isolation is drafted (`../specs/0004-phase3-tenancy-agents-triggers.md` §2–§3)
   and **not implemented**. Do not promise it. It is good "what's next" slide material and
   nothing more.
 
@@ -552,7 +552,7 @@ deliberately preserves `type` and `groupid` for forensics (`insert_response` der
 not route a **rejected** event to the group handler at all. The forensic record already
 lives under `data["rejected"]`, so nothing is lost.
 
-Tests must **assert the outcome, not the verdict** — `DESIGN_PHASE2.md` §8.6's rule.
+Tests must **assert the outcome, not the verdict** — `../specs/0003-phase2-identity-on-the-event-path.md` §8.6's rule.
 `response_decision` returning `False` is not the same as the batch not completing, and
 that gap *is* #885.
 
@@ -576,9 +576,9 @@ the one comparable bug was found against a live broker and by no unit test.
 - Two new stages: **a signed wake that verifies**, and **a forged event that is refused**.
   The second is the money shot and has no script today.
 - Capture the on-cluster signing cost. The measured laptop figure is 222 ms / 227 ms
-  (`IMPLEMENTATION_REPORT1.md` §9), ~190–230 ms across re-runs; whatever the cluster
+  (`../reports/phase1-report.md` §9), ~190–230 ms across re-runs; whatever the cluster
   gives has to be inside the wake-latency number on the slide, not omitted from it.
-- Update `IMPLEMENTATION_REPORT1.md` §8, which still says `ER_REQUIRE_SIGNATURE=true` has
+- Update `../reports/phase1-report.md` §8, which still says `ER_REQUIRE_SIGNATURE=true` has
   no end-to-end run.
 
 Exit criteria: one command drives zero → signed wake → verified completion → forged event
@@ -614,12 +614,12 @@ is a different cluster.
   rehearsal and the live run.
 - **Docs:** correct `keyset.py`'s "the upgrade path changes no verification logic" claim
   (false per §8.3 — EdDSA-only against SPIRE's EC/RSA, and `keyset.load` rejects JWKS).
-  **Leave `DESIGN_PHASE2.md` §6's `490/5` alone:** it is Phase 2's own delta measurement
+  **Leave `../specs/0003-phase2-identity-on-the-event-path.md` §6's `490/5` alone:** it is Phase 2's own delta measurement
   — "adds 40 over a 450/5 baseline on the same tree" — not a live claim about the suite,
   and overwriting it breaks that arithmetic. The `agentdocs` README says a phase record
   is superseded explicitly rather than edited in place. Add a footnote pointing at §2's
   current count instead.
-- Add the `<!-- VERIFY -->` comments `DESIGN_PHASE2.md` §8.5.5 prescribes to any statement
+- Add the `<!-- VERIFY -->` comments `../specs/0003-phase2-identity-on-the-event-path.md` §8.5.5 prescribes to any statement
   in this file that depends on #885–#889 staying open — §2.4's table, §2.5, §5/M1 and
   §6.3's slide, and in particular **§5/M3**, whose substituted demo beat stops reproducing
   once M1 lands. Naming the release, the issue and what should change is the rule; this
@@ -671,7 +671,7 @@ all.
 30 minutes is roughly **22–24 minutes of content, 4 minutes of demo, 3–4 minutes of
 questions.** The demo is the constraint: D1–D5 as written cannot be driven live in four
 minutes: wake alone is 1.0–5.0 s on ykt1 and the cycle back to zero is 30–31 s with
-`cooldownPeriod: 30` (`IMPLEMENTATION_REPORT1.md` §3), and that is before the agent
+`cooldownPeriod: 30` (`../reports/phase1-report.md` §3), and that is before the agent
 does any work.
 
 ### 6.1 Demo strategy: pre-record, narrate live
@@ -680,9 +680,9 @@ does any work.
 
 1. The full four-stage loop is ~6 minutes in mock mode (`k8s_demo_flow.py`), and the
    real-agent path has been blocked on an exhausted LiteLLM team budget
-   (`IMPLEMENTATION_REPORT1.md` §7) — a 429 on stage is unrecoverable.
+   (`../reports/phase1-report.md` §7) — a 429 on stage is unrecoverable.
 2. A cold image pull is 5.1 s of the wake (245 MB); warm it is 454 ms–2.45 s
-   (`IMPLEMENTATION_REPORT1.md` §3). Pre-pull on the node and the number improves, but
+   (`../reports/phase1-report.md` §3). Pre-pull on the node and the number improves, but
    it is still dead air.
 3. Conference wifi. Phase 2 §2.5 already lists offline operation as a design
    requirement for exactly this reason.
@@ -719,7 +719,7 @@ either accept that or record that one beat separately against a funded key.
      claims that *were* found stays thirteen — say "thirteen found" on the slide, not
      "thirteen outstanding", so the number does not need re-deriving before the talk. -->
 
-`DESIGN_PHASE2.md` §8 — thirteen documented claims that do not hold in code, each with a
+`../specs/0003-phase2-identity-on-the-event-path.md` §8 — thirteen documented claims that do not hold in code, each with a
 filed issue, plus the five-question checklist that came out of them — is the most valuable
 artifact in this repository, and it is more on-theme than it first appears.
 
@@ -738,7 +738,7 @@ will be presenting one. The five questions (§8.5) compress to one slide:
 4. Can an attacker choose the input the check reads?
 5. What does the claim become one release from now?
 
-Plus the two rules from `DESIGN_PHASE2.md` §8.6 that generalize best: **call the real
+Plus the two rules from `../specs/0003-phase2-identity-on-the-event-path.md` §8.6 that generalize best: **call the real
 function** (a
 reimplementation of the guard proves nothing about the guard), and **assert the outcome,
 not the verdict**.
@@ -792,8 +792,8 @@ answer ready.
 | Why hand-rolled Ed25519? | Phase 1 §1.1; Phase 2 §4.3. Note the `_scalar_mult` timing caveat before someone else does |
 | Why not HMAC — it's 170,000× faster? | Phase 2 §4.3: symmetric, so EventBridge could forge any agent's response |
 | Kafka ACLs? | Phase 2 §3.3: the authorizer is global, not per-listener, so the demo is either broken or vacuous |
-| Multi-tenancy? | `DESIGN_PHASE3.md` §2–§3, **design only** |
-| What's the signing overhead? | 222 ms sign / 227 ms verify, measured (`IMPLEMENTATION_REPORT1.md` §9). Pure Python; `cryptography` does it in microseconds. Confirm on-cluster in M2 |
+| Multi-tenancy? | `../specs/0004-phase3-tenancy-agents-triggers.md` §2–§3, **design only** |
+| What's the signing overhead? | 222 ms sign / 227 ms verify, measured (`../reports/phase1-report.md` §9). Pure Python; `cryptography` does it in microseconds. Confirm on-cluster in M2 |
 
 ---
 
@@ -853,13 +853,13 @@ Six things from the 2026-10-05 review that are not obvious from any single docum
 ### Caveats on the review this document is based on
 
 The code was read and the decision functions were run, but there was **no cluster
-access** — everything stated about cluster behaviour comes from `IMPLEMENTATION_REPORT1.md`
+access** — everything stated about cluster behaviour comes from `../reports/phase1-report.md`
 rather than from observation. Cluster-dependent claims in §2 should be re-confirmed in M2.
 
 The CNI finding in §8 observation 6 was reached by reading `k8s/kind/kind-cluster.yaml`, not by
 applying a NetworkPolicy to a running Kind cluster and watching it fail to block. That
 is the right direction for the conclusion — kindnetd's lack of NetworkPolicy support is
-documented upstream — but by `DESIGN_PHASE2.md` §8.6's rule it is still a claim that has
+documented upstream — but by `../specs/0003-phase2-identity-on-the-event-path.md` §8.6's rule it is still a claim that has
 been read rather than run. Confirm it before spending anything on either CNI option.
 
 ---

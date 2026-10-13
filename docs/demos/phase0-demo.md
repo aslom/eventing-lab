@@ -1,7 +1,7 @@
 # README — Phase 0 end-to-end demo
 
 Local signed-event wake demo, single machine, no Kubernetes.
-Design in [`DESIGN_PHASE0.md`](DESIGN_PHASE0.md); build details in [`IMPLEMENTATION_REPORT0.md`](IMPLEMENTATION_REPORT0.md).
+Design in [`../specs/0001-phase0-local-wire-contract.md`](../specs/0001-phase0-local-wire-contract.md); build details in [`../reports/phase0-report.md`](../reports/phase0-report.md).
 
 You'll drive an agent through the wire path
 
@@ -142,7 +142,7 @@ Optional tuning:
 
 | Env | Default | Meaning |
 |---|---|---|
-| `ER_MAX_CONCURRENT` | 4 | Max **distinct** correlationids running in parallel. Within one correlationid the Router serializes turns FIFO — see `DESIGN_PHASE0.md §4.5`. |
+| `ER_MAX_CONCURRENT` | 4 | Max **distinct** correlationids running in parallel. Within one correlationid the Router serializes turns FIFO — see `../specs/0001-phase0-local-wire-contract.md §4.5`. |
 | `CLAUDE_BIN` | `claude` | Path to the CLI if not on `PATH` |
 | `KAFKA_BOOTSTRAP` | `localhost:9092` | |
 | `ER_EMIT_SYSTEM_HOOKS` | `false` | Forward `SessionStart` hook frames as events — off by default (they're noise). |
@@ -705,6 +705,6 @@ The four tests in `tests/test_router.py` cover FIFO ordering per correlationid, 
 ## 8. What comes next
 
 - **Phase 1**: Swap `subprocess.Popen(claude)` in `eventrunner/runner.py` for a Kubernetes Job consumed by the same Kafka topic + CloudEvent contract; wire a KEDA `ScaledObject` on consumer lag; add JWS signatures over the CloudEvent envelope (`ce_signature` extension); bind response events to their triggering request via `causationid`.
-- **Real-claude e2e harness (`rossoctl-e2e-test`)**: full multi-channel integration test described in `DESIGN_PHASE0.md §6a` — deferred until an API budget is agreed.
+- **Real-claude e2e harness (`rossoctl-e2e-test`)**: full multi-channel integration test described in `../specs/0001-phase0-local-wire-contract.md §6a` — deferred until an API budget is agreed.
 
-See `IMPLEMENTATION_REPORT0.md §4` for the current known-issues list.
+See `../reports/phase0-report.md §4` for the current known-issues list.

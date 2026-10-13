@@ -1,4 +1,4 @@
-"""Tenancy keys, topic names and derived ntfy topics. DESIGN_PHASE3.md §2.3, §3.1, §4.2.
+"""Tenancy keys, topic names and derived ntfy topics. docs/specs/0004-phase3-tenancy-agents-triggers.md §2.3, §3.1, §4.2.
 
 The collision tests are the point of this file. `_slug` is deliberately lossy, so the
 only thing standing between a readable key and a cross-tenant leak is the appended

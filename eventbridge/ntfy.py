@@ -205,7 +205,7 @@ class NtfyPublisher(threading.Thread):
         with `NTFY_GROUP_NOTIFY_ERRORS` off, while the batch's own arithmetic disagreed
         with the notification the operator had just received. This is reachable with
         signing fully enforced, because it is a routing decision on an attacker-supplied
-        attribute rather than a signature check. `DESIGN_PHASE2.md` §8.5.4 states the
+        attribute rather than a signature check. `docs/specs/0003-phase2-identity-on-the-event-path.md` §8.5.4 states the
         general rule: if the decision reads an attribute off the event, the forger
         controls it — including by leaving it out. So resolve the correlation id's group
         from `group_members`, which the forger does not supply.

@@ -1,4 +1,4 @@
-"""Declarative agent definitions. DESIGN_PHASE3.md §5.1, §5.2, §5.5.
+"""Declarative agent definitions. docs/specs/0004-phase3-tenancy-agents-triggers.md §5.1, §5.2, §5.5.
 
 Up to Phase 2 "the agent" was five flags in `build_cmd()`: there was no notion of
 *which* agent, no system prompt, and no tool policy. A trigger (§7) has to answer "run

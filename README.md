@@ -1,11 +1,22 @@
-# Eventing — signed-event agent wake path
+# eventing-lab — signed-event agent wake path
 
 Event-driven plumbing that wakes a Claude Code agent from a Kafka message and
 streams every step of its run back out as CloudEvents.
 
-Phase 0 is a **local, single-machine demo** — no Kubernetes, no signatures yet.
-It exists to pin down the wire contract (CloudEvent envelope, correlation
-identity, per-conversation ordering) before any of it moves onto a cluster.
+Four phases, built in order, each a delta over the last: a local wire contract
+(Phase 0), KEDA scale-to-zero on Kubernetes (Phase 1), identity and signing on the
+event path (Phase 2), and per-user isolation with declarative agents (Phase 3,
+partly implemented). Phase 4 — enrollment and human-in-the-loop approval — is
+designed but not built. **[`docs/specs/README.md`](docs/specs/README.md) is the
+registry, and it is blunt about which is which.**
+
+The sections below describe the system as it runs today. Phase 0 remains the one to
+read first, because it pins down the wire contract — the CloudEvent envelope,
+correlation identity and per-conversation ordering — that every later phase assumes
+and none of them changes.
+
+> Extracted from [`rossoctl/examples`](https://github.com/rossoctl/examples) (`eventing/`),
+> with git history preserved.
 
 ## The wire path
 
@@ -28,7 +39,7 @@ those back and serves them as JSON, ndjson, SSE, or a live HTML transcript.
 | `eventbridge/` | WSGI HTTP front door (`:8080`), Kafka producer + consumer, SQLite event store, HTML/SSE views, ntfy fan-out, startup network self-test |
 | `eventrunner/` | Kafka consumer that spawns `claude` per request and converts stream-json into response CloudEvents |
 | `shared/` | CloudEvent envelope helpers, binary-mode Kafka binding, PID files, correlation word lists |
-| `tests/` | 97 unit tests across 15 files — no Kafka or `claude` needed |
+| `tests/` | 978 unit tests across 43 files — no Kafka or `claude` needed |
 | `scripts/stop-demo.sh` | SIGINT → SIGTERM → SIGKILL both daemons via their PID files |
 | `Dockerfile-eventbridge`, `Dockerfile-eventrunner` | One image per service, free-threaded CPython supplied by uv |
 | `scripts/build-images.sh` | Multi-arch build (`linux/amd64,linux/arm64`) + push, or `--local` single-arch |
@@ -55,7 +66,7 @@ EventRunner's router gives each correlationid a slot and serializes its turns
 in arrival order, while distinct correlationids run concurrently up to
 `ER_MAX_CONCURRENT` (default 4). Three concurrent `/continue` calls on one
 correlationid land as three contiguous, non-interleaved blocks. This is the
-contract in [`DESIGN_PHASE0.md §4.5`](agentdocs/DESIGN_PHASE0.md), and
+contract in [`docs/specs/0001-phase0-local-wire-contract.md §4.5`](docs/specs/0001-phase0-local-wire-contract.md), and
 `tests/test_router.py` proves it —
 FIFO order, cross-correlation parallelism, the concurrency cap, and slot
 re-arm after drain.
@@ -179,7 +190,7 @@ reachable by anyone you would not hand a shell to. It guards only
 `POST /v0/agents` and `POST /v0/groups`; `GET`s, `/healthz`, `/docs`,
 `PUT /transcript` and `/continue` stay open by design. Read only from the
 environment, never from `config.toml`, which is committed. Deployment recipe and
-the full list of what stays open: `agentdocs/README_PHASE1.md` §
+the full list of what stays open: `docs/demos/phase1-demo.md` §
 "Submit-path authentication".
 
 Two of these are load-bearing in ways that are easy to miss.
@@ -191,7 +202,7 @@ nobody joins.
 
 #### Phase 3 — per-user isolation
 
-Added in Phase 3 (`agentdocs/DESIGN_PHASE3.md`). Only the variables whose code is
+Added in Phase 3 (`docs/specs/0004-phase3-tenancy-agents-triggers.md`). Only the variables whose code is
 actually in the tree — §9's steps 1–4. Every one of them is off or single-tenant by
 default, so an existing deployment that upgrades and changes nothing behaves exactly
 as it did:
@@ -214,7 +225,7 @@ transcripts live in their own SQLite files and a read routes to the owning tenan
 and transcript authentication (T8) are not in. So in `multi` mode the HTTP reads,
 `/continue` and `PUT /transcript` are still as open as Phase 2's. And even once they
 land, separate topics without Kafka ACLs are *organisation*, not isolation;
-`DESIGN_PHASE3.md` §3.6 and §10 are explicit about which claim each configuration earns.
+`docs/specs/0004-phase3-tenancy-agents-triggers.md` §3.6 and §10 are explicit about which claim each configuration earns.
 
 **`multi` also does not work end to end yet.** Until T6 neither consumer subscribes to
 the per-user topics, so no response is ever consumed: transcript pages stay empty, group
@@ -307,7 +318,7 @@ Logs for every step land in `$TMPDIR/rossoctl-eventing-e2e/`.
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest tests/ -q
+uv run --extra dev python -m pytest tests -q   # 978 passed, 7 skipped, 1 xfailed
 ```
 
 No Kafka, no broker, no `claude`. Coverage spans the router contract,
@@ -367,7 +378,7 @@ What arrived with it:
   historically documented entry points keep one-line `exec` shims.
 
 Manifests live in `k8s/` (`base/`, `topics/`, `kind/`, `overlays/{test,kind,demo}`);
-the design and build records are in [`agentdocs/`](agentdocs/README.md).
+the design and build records are in [`docs/`](docs/README.md).
 **Nothing secret is committed**: the demo overlay references a Secret that
 `k8s_deploy.py` creates from your environment at deploy time.
 
@@ -377,7 +388,7 @@ the design and build records are in [`agentdocs/`](agentdocs/README.md).
 
 | | What it proves | Needs |
 |---|---|---|
-| [Local](#1-local-no-containers) | the logic: 286 unit tests | Python 3.14t, `uv` |
+| [Local](#1-local-no-containers) | the logic: 978 unit tests | Python 3.14t, `uv` |
 | [Kind](#2-kind-local-kubernetes) | the whole KEDA story, no shared cluster, no VPN | Docker + `kind` |
 | [OpenShift / ykt1](#3-openshift-ykt1) | the same, plus the arbitrary-UID and multi-node paths Kind cannot test | cluster access |
 
@@ -1082,26 +1093,26 @@ multi-replica EventBridge, and TLS to Kafka.
 ## Detail docs
 
 The long-form designs, build reports and full runbooks live in
-**[`agentdocs/`](agentdocs/)**, which has [its own index](agentdocs/README.md). They
+**[`docs/`](docs/)**, which has [its own index](docs/README.md). They
 are the authoritative references this file summarizes. The one-page summary of all of
 them, for a reader who will not open the code, is in
-[`docs/`](docs/EXECUTIVE_SUMMARY.md):
+[`docs/`](docs/eventing-lab-overview.md):
 
 | | |
 |---|---|
-| [`docs/EXECUTIVE_SUMMARY.md`](docs/EXECUTIVE_SUMMARY.md) | **start here if you are not going to open the code** — what each phase decided, what is built as opposed to designed, and the KubeCon commitment with its gaps |
-| [`agentdocs/DESIGN_PHASE0.md`](agentdocs/DESIGN_PHASE0.md) | the wire contract, the `uuid5` session scheme, and the §4.5 per-correlation ordering guarantee |
-| [`agentdocs/DESIGN_PHASE1.md`](agentdocs/DESIGN_PHASE1.md) | the KEDA scaling model, the §16 gaps, and §3.2 on the local Kind target |
-| [`agentdocs/DESIGN_PHASE2.md`](agentdocs/DESIGN_PHASE2.md) | identity on the event path — and §8, the thirteen control claims a docs review disproved, with §8.5's five questions |
-| [`agentdocs/DESIGN_PHASE3.md`](agentdocs/DESIGN_PHASE3.md) | per-user isolation, `AgentSpec`, and event triggers — partly implemented, `EB_TENANCY_MODE` still defaults to `single` |
-| [`agentdocs/DESIGN_PHASE4.md`](agentdocs/DESIGN_PHASE4.md) | enrollment and human-in-the-loop approval — design only, with §2 the measured mechanism the rest rests on |
-| [`agentdocs/IMPLEMENTATION_REPORT0.md`](agentdocs/IMPLEMENTATION_REPORT0.md) | what Phase 0 built, and the follow-ups it left |
-| [`agentdocs/IMPLEMENTATION_REPORT1.md`](agentdocs/IMPLEMENTATION_REPORT1.md) | what Phase 1 built, measured results on both clusters, 28 findings, and what is still blocked |
-| [`agentdocs/IMPLEMENTATION_REPORT3.md`](agentdocs/IMPLEMENTATION_REPORT3.md) | what Phase 3 has built so far, measured — and §5, which is explicit that `multi` does not work end to end |
-| [`agentdocs/KUBECON_NA_2026.md`](agentdocs/KUBECON_NA_2026.md) | the KubeCon NA talk: the abstract's five demo beats, their status, the SPIRE decision, and the MVP cut |
-| [`agentdocs/README_PHASE0.md`](agentdocs/README_PHASE0.md) | the laptop runbook in full detail |
-| [`agentdocs/README_PHASE1.md`](agentdocs/README_PHASE1.md) | the Phase 1 runbook in full detail — local, Docker, Kind, OpenShift |
+| [`docs/eventing-lab-overview.md`](docs/eventing-lab-overview.md) | **start here if you are not going to open the code** — what each phase decided, what is built as opposed to designed, and the KubeCon commitment with its gaps |
+| [`docs/specs/0001-phase0-local-wire-contract.md`](docs/specs/0001-phase0-local-wire-contract.md) | the wire contract, the `uuid5` session scheme, and the §4.5 per-correlation ordering guarantee |
+| [`docs/specs/0002-phase1-keda-kubernetes.md`](docs/specs/0002-phase1-keda-kubernetes.md) | the KEDA scaling model, the §16 gaps, and §3.2 on the local Kind target |
+| [`docs/specs/0003-phase2-identity-on-the-event-path.md`](docs/specs/0003-phase2-identity-on-the-event-path.md) | identity on the event path — and §8, the thirteen control claims a docs review disproved, with §8.5's five questions |
+| [`docs/specs/0004-phase3-tenancy-agents-triggers.md`](docs/specs/0004-phase3-tenancy-agents-triggers.md) | per-user isolation, `AgentSpec`, and event triggers — partly implemented, `EB_TENANCY_MODE` still defaults to `single` |
+| [`docs/specs/0005-phase4-enrollment-and-permission.md`](docs/specs/0005-phase4-enrollment-and-permission.md) | enrollment and human-in-the-loop approval — design only, with §2 the measured mechanism the rest rests on |
+| [`docs/reports/phase0-report.md`](docs/reports/phase0-report.md) | what Phase 0 built, and the follow-ups it left |
+| [`docs/reports/phase1-report.md`](docs/reports/phase1-report.md) | what Phase 1 built, measured results on both clusters, 28 findings, and what is still blocked |
+| [`docs/reports/phase3-report.md`](docs/reports/phase3-report.md) | what Phase 3 has built so far, measured — and §5, which is explicit that `multi` does not work end to end |
+| [`docs/notes/kubecon-na-2026.md`](docs/notes/kubecon-na-2026.md) | the KubeCon NA talk: the abstract's five demo beats, their status, the SPIRE decision, and the MVP cut |
+| [`docs/demos/phase0-demo.md`](docs/demos/phase0-demo.md) | the laptop runbook in full detail |
+| [`docs/demos/phase1-demo.md`](docs/demos/phase1-demo.md) | the Phase 1 runbook in full detail — local, Docker, Kind, OpenShift |
 
 If something behaves surprisingly, check
-[`IMPLEMENTATION_REPORT1.md`](agentdocs/IMPLEMENTATION_REPORT1.md) §4 first — most
+[`docs/reports/phase1-report.md`](docs/reports/phase1-report.md) §4 first — most
 surprises are already recorded there with their root cause.

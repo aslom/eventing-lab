@@ -36,7 +36,7 @@ def test_generate_makes_one_bridge_key_and_the_asked_for_runners():
 def test_the_bridge_and_runner_never_share_a_seed():
     """The property the whole design rests on. One shared seed would mean EventBridge
     holds the key it verifies runner responses with, so it could forge any agent's
-    answer — which is exactly why HMAC was rejected (DESIGN_PHASE2.md §4.3)."""
+    answer — which is exactly why HMAC was rejected (docs/specs/0003-phase2-identity-on-the-event-path.md §4.3)."""
     keys = G.generate(1)
     assert keys["eb-01"] != keys["runner-01"]
 

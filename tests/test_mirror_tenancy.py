@@ -1,4 +1,4 @@
-"""GroupMirror replay in multi-tenant mode. DESIGN_PHASE3.md §6.1, §21.2.
+"""GroupMirror replay in multi-tenant mode. docs/specs/0004-phase3-tenancy-agents-triggers.md §6.1, §21.2.
 
 The mirror is what makes §21.2's "replayable from Kafka alone" claim true, and it is the
 normal upgrade path: the history it replays was published before Phase 3 existed, so none

@@ -1,10 +1,10 @@
 # README — Phase 1: running the KEDA-scaled deployment
 
 How to run the Phase 1 system in each of the three environments, with the tests
-and the demo flow for each. Companion to `DESIGN_PHASE1.md` (the design) and
-`IMPLEMENTATION_REPORT1.md` (what was built and what the tests actually showed).
+and the demo flow for each. Companion to `../specs/0002-phase1-keda-kubernetes.md` (the design) and
+`../reports/phase1-report.md` (what was built and what the tests actually showed).
 
-Phase 0's `README_PHASE0.md` still describes the laptop demo in more detail; this
+Phase 0's `../demos/phase0-demo.md` still describes the laptop demo in more detail; this
 document only covers what Phase 1 changed or added.
 
 ```text
@@ -32,7 +32,7 @@ document only covers what Phase 1 changed or added.
 All paths are relative to `eventing/` in the `examples` repository unless said
 otherwise.
 
-Every script is Python and stdlib-only (`DESIGN_PHASE1.md` §9). The two
+Every script is Python and stdlib-only (`../specs/0002-phase1-keda-kubernetes.md` §9). The two
 historically documented entry points keep one-line `exec` shims
 (`scripts/build-images.sh`, `scripts/docker-e2e-test.sh`) so old muscle memory
 still works.
@@ -110,7 +110,7 @@ is the failure Gap B is about.
 Unchanged from Phase 0:
 
 ```bash
-# Kafka on localhost:9092 with topics `requests` and `responses` — see README_PHASE0.md
+# Kafka on localhost:9092 with topics `requests` and `responses` — see ../demos/phase0-demo.md
 uv run rossoctl-eventbridge      # http://127.0.0.1:8080, /docs
 uv run rossoctl-eventrunner      # mock mode unless a credential is in the env
 python3 scripts/stop_demo.py     # was stop-demo.sh
@@ -721,7 +721,7 @@ rm /tmp/seed.hex
 Signing is implemented in pure Python (`cryptography` is a C extension and
 banned), verified against the RFC 8032 test vectors. It is off by default partly
 because the pure-Python scalar multiplication is real per-event overhead:
-IMPLEMENTATION_REPORT1.md §9 measured **222 ms to sign and 227 ms to verify** on
+../reports/phase1-report.md §9 measured **222 ms to sign and 227 ms to verify** on
 the reference laptop, and later hardware has measured inside a 190–230 ms band —
 fine for the terminal event, wrong for every intermediate one.
 

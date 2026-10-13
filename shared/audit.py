@@ -6,7 +6,7 @@ that caused it, and this is the module that can show it rather than assert it.
 
 **Pure, and deliberately not a Kafka client.** It takes already-decoded CloudEvents and
 returns a verdict per event plus the chain between them, so the whole thing is testable
-without a broker — which matters because every one of `DESIGN_PHASE2.md` §8's thirteen
+without a broker — which matters because every one of `docs/specs/0003-phase2-identity-on-the-event-path.md` §8's thirteen
 findings coexisted with a passing suite that exercised the configuration each claim was
 true in. The Kafka half lives in `scripts/audit_topic.py`.
 
@@ -99,7 +99,7 @@ class Chain:
 
         `bound=False` would read identically for "no terminal at all", "the terminal is
         unsigned" and "a genuine answer is present alongside a forgery", which are three
-        different operational facts. Collapsing them is the mistake `DESIGN_PHASE4.md`
+        different operational facts. Collapsing them is the mistake `docs/specs/0005-phase4-enrollment-and-permission.md`
         §5.7 names about recording a timeout as a refusal.
         """
         if not self.request_id:

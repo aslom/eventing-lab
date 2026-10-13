@@ -1,4 +1,4 @@
-"""`userkey` and `depth` inside the signed attribute set. DESIGN_PHASE3.md §2.6, §7.7, §8.3.
+"""`userkey` and `depth` inside the signed attribute set. docs/specs/0004-phase3-tenancy-agents-triggers.md §2.6, §7.7, §8.3.
 
 Why these two have to be signed rather than merely present on the event:
 

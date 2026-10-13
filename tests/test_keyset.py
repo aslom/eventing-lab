@@ -250,7 +250,7 @@ def test_the_submitter_issuer_is_covered_by_the_signature():
 
 
 def test_the_groupid_is_covered_by_the_signature():
-    """DESIGN_PHASE1.md §21.9.9 requires it: a forged `groupid` moves a response into
+    """docs/specs/0002-phase1-keda-kubernetes.md §21.9.9 requires it: a forged `groupid` moves a response into
     another batch and corrupts that batch's fan-in counts."""
     ok, _ = _tampered_on_the_wire("groupid", b"g-victim", groupid="g-mine")
     assert not ok

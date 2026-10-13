@@ -1,4 +1,4 @@
-# <PROJECT> — Design specs
+# eventing-lab — Design specs
 
 A spec is a **deep dive on one subsystem or one slice of work**: what we are building, why,
 what we considered and turned down, and what we are knowingly deferring. It is the document
@@ -9,15 +9,28 @@ filenames are dated and descriptive so they never need renaming when numbering s
 
 ## Index
 
-| ID  | Title                   | Spec                                                              | Status      | Report |
-| --- | ----------------------- | ----------------------------------------------------------------- | ----------- | ------ |
-| M1  | <first design>          | `YYYY-MM-DD-<topic>-design.md`                                    | Proposed    | —      |
+This work is phase-structured, so the ID is the phase. Each phase is a **delta over the one
+before it** — read them in order; only Phase 0 is self-contained.
 
-<!--
-Add a row per spec. Keep the canonical ID here rather than in the filename.
-If the work is phase-structured instead of milestone-numbered, use Phase 0/1/2… as the ID.
-Link the report in the last column once the phase lands.
--->
+| ID      | Title                                            | Spec                                                                                       | Status                       | Report                                             |
+| ------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------ | ---------------------------- | -------------------------------------------------- |
+| Phase 0 | Local signed-event wake demo (no Kubernetes)     | [`0001-phase0-local-wire-contract.md`](0001-phase0-local-wire-contract.md)                 | Implemented                  | [`phase0-report.md`](../reports/phase0-report.md)  |
+| Phase 1 | KEDA-scaled Kubernetes deployment                | [`0002-phase1-keda-kubernetes.md`](0002-phase1-keda-kubernetes.md)                         | Implemented                  | [`phase1-report.md`](../reports/phase1-report.md)  |
+| Phase 2 | Identity on the event path                       | [`0003-phase2-identity-on-the-event-path.md`](0003-phase2-identity-on-the-event-path.md)   | Accepted                     | —                                                  |
+| Phase 3 | Per-user isolation, declarative agents, triggers | [`0004-phase3-tenancy-agents-triggers.md`](0004-phase3-tenancy-agents-triggers.md)         | Accepted — partly implemented | [`phase3-report.md`](../reports/phase3-report.md)  |
+| Phase 4 | Enrollment, and asking a human for permission    | [`0005-phase4-enrollment-and-permission.md`](0005-phase4-enrollment-and-permission.md)     | Proposed — design only        | —                                                  |
+
+Two things the status column is deliberately blunt about:
+
+- **Phase 3 is partial.** §9's steps 1-4 plus T5 are in the tree, but `EB_TENANCY_MODE` still
+  defaults to `single`, which reproduces Phase 2 exactly. Owner-scoped reads, transcript auth,
+  ntfy isolation, triggers and Kafka ACLs are design only.
+- **Phase 4 is unimplemented.** Only §2 is measured; everything else depends on Phase 3's ntfy
+  isolation and capability key landing first.
+
+Phase 2 §8 additionally records thirteen control claims that a docs review found do not hold in
+the code, and §8.5-§8.8 the five questions to ask of any control claim before it ships. That
+procedure applies to every phase, not just Phase 2.
 
 ## What a spec is (and isn't)
 

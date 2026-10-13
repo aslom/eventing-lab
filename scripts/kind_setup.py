@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bring a local Kind cluster up to what Phase 1 needs. DESIGN_PHASE1.md §3.2.
+"""Bring a local Kind cluster up to what Phase 1 needs. docs/specs/0002-phase1-keda-kubernetes.md §3.2.
 
 The reference cluster already had Strimzi, KEDA and an ingress router; a fresh Kind
 cluster has none of them, so `k8s_preflight.py` fails it on exactly three checks.

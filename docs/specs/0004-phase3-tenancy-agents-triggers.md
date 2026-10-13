@@ -1,6 +1,7 @@
 # DESIGN — Phase 3: per-user isolation, declarative agents, and event triggers
 
-Status: draft (revision 1) — **partly implemented.** §9's steps 1-4 are in the tree:
+Version: 1.0 — October 2026 <!-- revision 1 -->
+Status: Accepted — partly implemented <!-- §9 steps 1-4 + T5 landed; see ../reports/phase3-report.md. EB_TENANCY_MODE still defaults to `single`. --> — **partly implemented.** §9's steps 1-4 are in the tree:
 T1 (`shared/tenancy.py`), T2 (`TopicSet` threaded through both services), T3 (`Caller`,
 the registry, `ce_userkey`), T4 (`SIGNED_ATTRS` += `userkey`, `depth`, `agent`), T13 (`AgentSpec`)
 and T22 (the Secret-vs-ConfigMap test). **T5 is also in** — per-user stores
@@ -26,7 +27,7 @@ ACLs), **T21** (retention and deletion).
 
 Where a section is implemented, the code is the authority on what it does; this document
 remains the authority on *why*.
-Scope: **delta over `DESIGN_PHASE2.md`.** Read that first, and §2.1 of it before
+Scope: **delta over `../specs/0003-phase2-identity-on-the-event-path.md`.** Read that first, and §2.1 of it before
 anything else here.
 
 Phase 2 learned *who* is asking. It put a name on the event (`ce_submitter`) and
@@ -2205,7 +2206,7 @@ In the spirit of Phase 2 §3, the things a demo of this must not claim:
 
 ## 12. Reading order for whoever picks this up
 
-- **Running it?** `README_PHASE1.md` for the base deployment, then §8.1's
+- **Running it?** `../demos/phase1-demo.md` for the base deployment, then §8.1's
   `EB_TENANCY_MODE` and §9's rollout order. Do not start at §7.
 - **Adding multi-tenancy to an existing deployment?** §9, in order. Steps 1–4 are safe
   to merge before anything is switched on; step 4 is the one that requires both services

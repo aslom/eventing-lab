@@ -63,7 +63,7 @@ class Emitter:
              causationid: str | None = None, groupid: str | None = None) -> str:
         """Publish one response event.
 
-        `causationid` (DESIGN_PHASE1.md §11) is the `id` of the request event that
+        `causationid` (docs/specs/0002-phase1-keda-kubernetes.md §11) is the `id` of the request event that
         caused this one. Without it the only link is `correlationid`, which
         identifies a *conversation*, not a *turn* — so responses from a
         `/continue` turn could not be attributed to their specific triggering

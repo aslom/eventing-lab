@@ -1,6 +1,6 @@
 """EventRunner consumer: retry, configurable group, deferred commits, replay guard.
 
-Gates T1.1, T1.2, T1.5, T1.6 and the §16 Gap C guard (DESIGN_PHASE1.md §20).
+Gates T1.1, T1.2, T1.5, T1.6 and the §16 Gap C guard (docs/specs/0002-phase1-keda-kubernetes.md §20).
 
 The Phase 0 failure these exist to prevent is the quiet one: the consumer thread
 raises, the main thread keeps running, and the pod reports healthy while

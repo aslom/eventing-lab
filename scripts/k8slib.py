@@ -1,6 +1,6 @@
 """kubectl wrapper that returns data structures, not strings.
 
-DESIGN_PHASE1.md §9, point 2: `kubectl -o jsonpath='{.status.foo}'` returns an
+docs/specs/0002-phase1-keda-kubernetes.md §9, point 2: `kubectl -o jsonpath='{.status.foo}'` returns an
 empty string and exits **0** when the field moves or the object is a different
 shape than you assumed. Every such silent empty becomes a confusing failure
 somewhere downstream. So:
@@ -11,7 +11,7 @@ somewhere downstream. So:
     mistake;
   * no shell, ever: argv lists all the way down (see proclib).
 
-No Kubernetes client library — DESIGN_PHASE0.md §1.1 forbids new runtime deps,
+No Kubernetes client library — docs/specs/0001-phase0-local-wire-contract.md §1.1 forbids new runtime deps,
 and shelling out to kubectl inherits the user's kubeconfig, auth plugins and
 OpenShift login without this code handling any of it.
 """

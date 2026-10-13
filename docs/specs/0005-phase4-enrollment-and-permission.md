@@ -1,7 +1,8 @@
 # DESIGN — Phase 4: enrollment, and asking a human for permission
 
-Status: draft (revision 1)
-Scope: **delta over `DESIGN_PHASE2.md` and `DESIGN_PHASE3.md`.** Read those first —
+Version: 1.0 — October 2026 <!-- revision 1 -->
+Status: Proposed <!-- design only: nothing in it is implemented; depends on Phase 3 ntfy isolation -->
+Scope: **delta over `../specs/0003-phase2-identity-on-the-event-path.md` and `../specs/0004-phase3-tenancy-agents-triggers.md`.** Read those first —
 Phase 2 §2.1 for the opaque-token constraint that shapes every identity decision here,
 Phase 3 §4.2 for the derived ntfy topic this phase hands to a user, and Phase 3 §4.4 for
 the capability key this phase extends.
@@ -669,8 +670,8 @@ this document is design.
 **Not verified, and not claimed:**
 
 - **Nothing here has run on a cluster.** This document was written without cluster access,
-  so every statement about cluster behaviour is inherited from `IMPLEMENTATION_REPORT1.md`
-  and Phase 3's design rather than observed. The same caveat `KUBECON_NA_2026.md` §7
+  so every statement about cluster behaviour is inherited from `../reports/phase1-report.md`
+  and Phase 3's design rather than observed. The same caveat `../notes/kubecon-na-2026.md` §7
   records, for the same reason.
 - **The CLI version is not the pinned one.** `Dockerfile-eventrunner-claude` pins
   `CLAUDE_VERSION=2.1.278`; §2 was measured on 2.1.270. The contract is expected to hold

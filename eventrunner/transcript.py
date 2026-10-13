@@ -1,6 +1,6 @@
 """Checkpoint `claude` session transcripts through EventBridge.
 
-Resolves DESIGN_PHASE1.md §16 Gap B: `claude --resume <uuid>` needs the
+Resolves docs/specs/0002-phase1-keda-kubernetes.md §16 Gap B: `claude --resume <uuid>` needs the
 transcript `.jsonl` on the local filesystem, and in Phase 1 that filesystem is a
 pod's ephemeral layer. So turn 1 writes the transcript into pod A, the demo goes
 idle, pod A is destroyed, and turn 2's `--resume` runs against a filesystem that

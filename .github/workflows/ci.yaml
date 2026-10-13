@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install ruff
+        run: pip install ruff==0.11.4
+      - name: Lint with ruff
+        run: ruff check .
+      # `ruff format --check` is deliberately NOT run. pyproject.toml sets
+      # [tool.ruff.format] exclude = ["*"] for this package: the formatter would expand
+      # the one-line best-effort `try:`/`except Exception: pass` guards on the shutdown
+      # and error paths, and collapse the aligned EXT_* constant columns in shared/ce.py
+      # — 78 files rewritten to no benefit. Lint still runs over everything.
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          # 3.14 is the floor this package declares (`requires-python = ">=3.14"`); it uses
+          # the free-threaded build. Do not lower this to match other repos.
+          python-version: "3.14"
+      - name: Install test dependencies
+        run: pip install pytest kafka-python
+      - name: Run tests
+        # The suite needs neither a broker nor the `claude` binary — anything that would
+        # is a script under scripts/, exercised by the e2e flows rather than here.
+        run: python -m pytest -v

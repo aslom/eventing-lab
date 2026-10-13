@@ -30,6 +30,17 @@ A note is dated, narrow, and left alone once written.
 `notes/` is the right answer when none of the above fit — not the default when you cannot
 decide. If a note grows past a few pages and starts describing a design, promote it to a spec.
 
+## What is here now
+
+| Note                                               | What it is                                                                 |
+| --------------------------------------------------- | -------------------------------------------------------------------------- |
+| [`kubecon-na-2026.md`](kubecon-na-2026.md)          | The KubeCon NA knowledge base: the accepted abstract, the five demo beats and their status against the code as of 2026-10-05, the SPIRE decision, and the 30-minute slide/demo shape. |
+
+`kubecon-na-2026.md` is a **living document with a deadline** — unlike the phase records in
+[`../specs/`](../specs/) and [`../reports/`](../reports/), its status figures and open-bug list
+expire at the talk. It is here rather than in `specs/` because it decides nothing about the
+system; it tracks what can honestly be shown.
+
 ## Conventions
 
 - **Date-prefix anything time-bound** (`2026-10-07-…`); omit the date for reference material

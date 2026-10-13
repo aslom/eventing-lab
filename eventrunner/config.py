@@ -50,7 +50,7 @@ class Cfg:
     include_raw: bool = True
     dedupe_final_text: bool = True
 
-    # ---- Phase 1 (DESIGN_PHASE1.md §8.9) ----
+    # ---- Phase 1 (docs/specs/0002-phase1-keda-kubernetes.md §8.9) ----
 
     # §8.2 — must match the ScaledObject's trigger consumerGroup EXACTLY. A
     # mismatch is a silent no-scale failure: KEDA watches a group nobody joins,
@@ -107,7 +107,7 @@ class Cfg:
     # verifier holding exactly one key accepts it; name it as soon as there are two.
     signing_kid: str = ""
 
-    # ---- Phase 3 (DESIGN_PHASE3.md) ----
+    # ---- Phase 3 (docs/specs/0004-phase3-tenancy-agents-triggers.md) ----
 
     # §3.3 — which tenant this runner serves. Stamped on every response as
     # `ce_userkey`, which is what lets EventBridge file the response in the right
@@ -185,7 +185,7 @@ def load() -> Cfg:
         raise SystemExit(
             f"ER_USERKEY {cfg.userkey!r} does not have the shape tenancy.userkey() "
             f"produces (<iss>-<slug>-<8 hex>, e.g. gh-alice-a1b2c3d4). Check the "
-            f"user registry entry it was rendered from. See DESIGN_PHASE3.md §3.3.")
+            f"user registry entry it was rendered from. See docs/specs/0004-phase3-tenancy-agents-triggers.md §3.3.")
     cfg.agent_dir  = e("ER_AGENT_DIR",  cfg.agent_dir)
     cfg.agent_name = e("ER_AGENT_NAME", cfg.agent_name)
     # A per-user runner is pointed at a per-user topic. Both directions of a mismatch
@@ -222,7 +222,7 @@ def load() -> Cfg:
             f"{problem} (got {cfg.request_topic!r}). A runner that stamps no "
             f"userkey — or the wrong one — on its responses produces events "
             f"EventBridge cannot attribute, or files them in another user's store. "
-            f"See DESIGN_PHASE3.md §3.3.")
+            f"See docs/specs/0004-phase3-tenancy-agents-triggers.md §3.3.")
     if cfg.userkey and not tenancy.topic_names_userkey(cfg.request_topic, cfg.userkey):
         raise SystemExit(
             f"ER_USERKEY is set but REQUEST_TOPIC {cfg.request_topic!r} is not this "
@@ -230,7 +230,7 @@ def load() -> Cfg:
             f"shared topic while stamping every response as {cfg.userkey!r} — in "
             f"multi-tenant mode that files other users' responses into one user's "
             f"store. Set REQUEST_TOPIC to the per-user topic, or clear ER_USERKEY. "
-            f"See DESIGN_PHASE3.md §3.3.")
+            f"See docs/specs/0004-phase3-tenancy-agents-triggers.md §3.3.")
 
     base = e("TMPDIR", "/tmp").rstrip("/")
     cfg.tmpdir = f"{base}/rossoctl-keda1"

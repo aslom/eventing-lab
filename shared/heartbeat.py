@@ -1,6 +1,6 @@
 """A liveness heartbeat file, for detecting a live process with a dead thread.
 
-DESIGN_PHASE1.md §8.4. EventRunner's failure mode in Kubernetes is not a crash:
+docs/specs/0002-phase1-keda-kubernetes.md §8.4. EventRunner's failure mode in Kubernetes is not a crash:
 if the Kafka consumer thread raises, the **main thread keeps running**, so the
 pod stays `Running`, reports healthy, consumes nothing, and the demo hangs
 silently. A process-liveness check cannot see that, and EventRunner has no HTTP

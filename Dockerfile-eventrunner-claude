@@ -1,4 +1,4 @@
-# EventRunner + the `claude` CLI. DESIGN_PHASE1.md §15, T2.4.
+# EventRunner + the `claude` CLI. docs/specs/0002-phase1-keda-kubernetes.md §15, T2.4.
 #
 # The base runner image deliberately omits the CLI: it is distributed
 # per-platform, versioned independently of this project, and mock mode makes a

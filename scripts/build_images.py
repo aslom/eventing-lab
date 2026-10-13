@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build the container images at a configurable registry-prefixed tag.
 
-Converted from `build-images.sh` (DESIGN_PHASE1.md §9, T0.3). Behaviour is
+Converted from `build-images.sh` (docs/specs/0002-phase1-keda-kubernetes.md §9, T0.3). Behaviour is
 unchanged; the reason for the conversion is that the shell version's sibling
 scripts had twice produced a harness reporting PASS for a command that never ran.
 

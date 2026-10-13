@@ -1,4 +1,4 @@
-# Contributing to <PROJECT>
+# Contributing to eventing-lab
 
 The **contribution process** — how to claim an issue, how review works, how to become a
 maintainer, and the code of conduct — is documented once for the whole project in
@@ -18,8 +18,8 @@ its conventions are.
 ## Setup
 
 ```sh
-git clone https://github.com/rossoctl/<PROJECT>.git
-cd <PROJECT>
+git clone https://github.com/rossoctl/eventing-lab.git
+cd eventing-lab
 
 # Install the git hooks. The commit-msg hook is required: it rewrites AI
 # Co-Authored-By trailers to the project's Assisted-By convention.

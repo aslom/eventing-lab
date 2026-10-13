@@ -1,10 +1,14 @@
 # IMPLEMENTATION REPORT — Phase 3 (partial: §9 steps 1–4, plus T5)
 
+Date: 2026-10-06
+Spec: [`../specs/0004-phase3-tenancy-agents-triggers.md`](../specs/0004-phase3-tenancy-agents-triggers.md)
+Covers: §9 rollout steps 1-4, plus T5, T13 and T22
+
 Status: **in progress.** This report covers what landed on
 `feat/eventing-phase3-tenancy-foundation` (PR #883): §9's rollout steps 1–4, plus T5, T13
 and T22. It will be extended as later steps land rather than rewritten.
 
-Written to the same contract as `IMPLEMENTATION_REPORT1.md`: measured figures rather than
+Written to the same contract as `../reports/phase1-report.md`: measured figures rather than
 estimates, failures with their root causes, and an explicit list of what is **not**
 verified — which for this phase is longer and more useful than the list of what is.
 
@@ -238,7 +242,7 @@ replayed group belonged to:
 - `_settle` called `maybe_complete(gid)` with no `userkey`, so it looked in the shared
   store for a group living in a tenant's store, found nothing, returned `False`. Every
   group a restart left unfinished stayed unfinished **forever**, and the failure mode is
-  silence — which `DESIGN_PHASE1.md` §21.6 calls the worst one.
+  silence — which `../specs/0002-phase1-keda-kubernetes.md` §21.6 calls the worst one.
 - Replayed events published *before* Phase 3 carry no `ce_userkey`, so member rows went to
   `shared/` while the group row sat in the tenant's store, leaving the counts permanently
   wrong. Pre-existing Kafka history is precisely what the mirror replays, so this is the

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """T1.7 — prove `claude --resume <absolute path to a .jsonl>` restores context.
 
-This is the single empirical fact the Gap B fix rests on (DESIGN_PHASE1.md §16).
+This is the single empirical fact the Gap B fix rests on (docs/specs/0002-phase1-keda-kubernetes.md §16).
 The headless docs say the path form works; nothing in this project had verified
 it. If it does NOT work, the transcript-checkpoint design (T1.8/T1.9) is dropped
 and Gap B falls back to option 3 (an RWO PVC plus maxReplicaCount: 1).

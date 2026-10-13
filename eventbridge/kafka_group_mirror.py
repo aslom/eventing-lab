@@ -285,7 +285,7 @@ class GroupMirror(threading.Thread):
                 # any curve arithmetic, so a topic of pre-signing records — the big-topic
                 # case, and the reason refusal was not an option — adds nothing
                 # measurable. An event that DOES carry a signature pays a full verify
-                # (190-230 ms, `IMPLEMENTATION_REPORT1.md` §9) whether or not it turns
+                # (190-230 ms, `docs/reports/phase1-report.md` §9) whether or not it turns
                 # out to be valid.
                 #
                 # So the honest version is not "only genuine terminals pay": the

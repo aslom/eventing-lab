@@ -1,6 +1,6 @@
 """proclib — the harness that must not be able to report PASS for nothing.
 
-DESIGN_PHASE1.md §9 names the bug that motivated Phase 1's move off bash: a UID
+docs/specs/0002-phase1-keda-kubernetes.md §9 names the bug that motivated Phase 1's move off bash: a UID
 test matrix printed `RESULT: PASS` while the `docker` command never ran, because
 `$?` had captured a `sed` from the same pipeline. These tests pin the Python
 equivalents shut.

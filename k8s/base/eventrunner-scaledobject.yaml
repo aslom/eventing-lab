@@ -1,4 +1,4 @@
-# The one new moving part in Phase 1. DESIGN_PHASE1.md §7.
+# The one new moving part in Phase 1. docs/specs/0002-phase1-keda-kubernetes.md §7.
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:

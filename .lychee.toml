@@ -30,6 +30,7 @@ exclude = [
 exclude_path = [
   "node_modules",
   "venv",
+  ".venv",
   "vendor",
   "charts",
   ".claude",

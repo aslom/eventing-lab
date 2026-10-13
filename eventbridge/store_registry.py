@@ -1,4 +1,4 @@
-"""Per-user stores, opened lazily and closed on an LRU. DESIGN_PHASE3.md §6.1.
+"""Per-user stores, opened lazily and closed on an LRU. docs/specs/0004-phase3-tenancy-agents-triggers.md §6.1.
 
 ```text
 {tmpdir}/eventbridge/

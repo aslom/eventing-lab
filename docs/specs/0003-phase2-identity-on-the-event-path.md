@@ -1,7 +1,8 @@
 # DESIGN — Phase 2: identity on the event path
 
-Status: draft (revision 2)
-Scope: **delta over `DESIGN_PHASE1.md`.** Read that first. This document records
+Version: 2.0 — October 2026 <!-- revision 2: §8 records 13 control claims the docs review found unsupported -->
+Status: Accepted <!-- signing is deployable; §8 lists the claims that do not yet hold -->
+Scope: **delta over `../specs/0002-phase1-keda-kubernetes.md`.** Read that first. This document records
 only what changes when the demo stops trusting whoever can reach it.
 
 Phase 0 proved the wire shape. Phase 1 decided where the consumer runs and how
@@ -436,7 +437,7 @@ knowing before a demo.
 
 ## 7. Reading order for whoever picks this up
 
-- **Running it?** `README_PHASE1.md`, then `EB_GITHUB_CLIENT_ID` and
+- **Running it?** `../demos/phase1-demo.md`, then `EB_GITHUB_CLIENT_ID` and
   `EB_ALLOWED_USERS` from §5.
 - **Changing the identity model?** §2.1 first — the opaque-token constraint is
   what rules out the design most people reach for.

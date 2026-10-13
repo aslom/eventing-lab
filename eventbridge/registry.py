@@ -1,4 +1,4 @@
-"""The approved-user registry. DESIGN_PHASE3.md §2.5.
+"""The approved-user registry. docs/specs/0004-phase3-tenancy-agents-triggers.md §2.5.
 
 Phase 2's `EB_ALLOWED_USERS` answers one question — may this person submit? Per-user
 topics, quotas, agent defaults and a runner Deployment need more, so the list gains a
@@ -168,7 +168,7 @@ def parse(raw: str) -> Registry:
                 f"this build derives {computed!r}. The recorded value names topics and "
                 f"Kubernetes objects that already exist, so this build would publish to "
                 f"new, empty topics and the user's history would appear to vanish. "
-                f"Refusing to start. See DESIGN_PHASE3.md §2.5.")
+                f"Refusing to start. See docs/specs/0004-phase3-tenancy-agents-triggers.md §2.5.")
 
         # The 32-bit birthday bound from §2.3, turned from a silent cross-tenant leak
         # into a refused signup. Two DIFFERENT identities producing one key is the

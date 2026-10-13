@@ -1,4 +1,4 @@
-"""Ed25519 + CloudEvent canonicalization. DESIGN_PHASE1.md §11.
+"""Ed25519 + CloudEvent canonicalization. docs/specs/0002-phase1-keda-kubernetes.md §11.
 
 `cryptography` is a C extension and banned by §1.1, so Ed25519 is implemented in
 pure Python from RFC 8032. That is only defensible if it is checked against the

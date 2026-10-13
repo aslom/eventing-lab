@@ -1,4 +1,4 @@
-"""Manifest invariants. Gates T3.2 and T3.4 (DESIGN_PHASE1.md §20).
+"""Manifest invariants. Gates T3.2 and T3.4 (docs/specs/0002-phase1-keda-kubernetes.md §20).
 
 Two levels, because of a constraint worth stating: §1.1 bans `pyyaml` (it ships a
 C extension), so there is no YAML parser available here, and
@@ -211,7 +211,7 @@ def test_secret_path_variables_are_never_set_from_the_committed_config():
     half-configured from a file in git."""
     toml = (ROOT / "eventbridge" / "config.toml").read_text()
     for var in SECRET_PATH_VARS:
-        assert var not in toml, f"{var} must be env-only (DESIGN_PHASE3.md §8.3)"
+        assert var not in toml, f"{var} must be env-only (docs/specs/0004-phase3-tenancy-agents-triggers.md §8.3)"
         # The TOML spelling of the same thing — a lower-cased key without the prefix.
         key = var.removeprefix("EB_").lower()
         assert key not in toml, f"{key} in config.toml reintroduces {var} by another name"
@@ -331,7 +331,7 @@ def test_every_phase3_variable_is_classified():
     unclassified = found - set(CONFIGMAP_VARS) - set(SECRET_PATH_VARS) - baseline
     assert not unclassified, (
         f"{sorted(unclassified)} are read by config.py but classified as neither "
-        f"ConfigMap nor Secret. DESIGN_PHASE3.md §8.3 requires the question be answered: "
+        f"ConfigMap nor Secret. docs/specs/0004-phase3-tenancy-agents-triggers.md §8.3 requires the question be answered: "
         f"add each to CONFIGMAP_VARS or SECRET_PATH_VARS in this file.")
 
 

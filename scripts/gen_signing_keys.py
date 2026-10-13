@@ -22,7 +22,7 @@ thing at more length, and it is worth repeating out loud when demoing.
 
 Asymmetry is the point: EventBridge gets its own seed and EventRunner gets another, so
 neither can produce the other's signatures. A single shared seed would be HMAC with
-extra steps, which `DESIGN_PHASE2.md` §4.3 rejected for exactly that reason.
+extra steps, which `docs/specs/0003-phase2-identity-on-the-event-path.md` §4.3 rejected for exactly that reason.
 
   python3 scripts/gen_signing_keys.py --out ~/.eventing-keys
   python3 scripts/gen_signing_keys.py --out ~/.eventing-keys --force
@@ -43,7 +43,7 @@ from shared import signing  # noqa: E402
 
 PREFIX = "keygen"
 BRIDGE_KID = "eb-01"
-SEED_FILE = "seed.hex"           # the key inside the Secret, per README_PHASE1.md
+SEED_FILE = "seed.hex"           # the key inside the Secret, per docs/demos/phase1-demo.md
 
 
 def _log(msg: str) -> None:

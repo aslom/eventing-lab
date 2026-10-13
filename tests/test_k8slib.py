@@ -4,7 +4,7 @@ The fixtures are real shapes captured from the ykt1 cluster (KEDA 2.20
 ScaledObject conditions, a Deployment, the Strimzi CRD version list), so a
 change in how those objects look shows up here rather than mid-deploy.
 
-Gate for T0.2 (DESIGN_PHASE1.md §20): "incl. a missing-field case that must
+Gate for T0.2 (docs/specs/0002-phase1-keda-kubernetes.md §20): "incl. a missing-field case that must
 raise rather than return empty".
 """
 import json

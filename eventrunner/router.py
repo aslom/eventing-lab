@@ -1,4 +1,4 @@
-"""Per-correlationid AgentSlot + FIFO. See DESIGN_PHASE0.md §4.5.
+"""Per-correlationid AgentSlot + FIFO. See docs/specs/0001-phase0-local-wire-contract.md §4.5.
 
 Guarantees:
  * At most one live claude subprocess per correlationid.
@@ -7,7 +7,7 @@ Guarantees:
    FIFO preserved here).
  * Different correlationids run in parallel, bounded by BoundedSemaphore.
 
-Phase 1 additions (DESIGN_PHASE1.md §8.3 / RQ-1 / RQ-2):
+Phase 1 additions (docs/specs/0002-phase1-keda-kubernetes.md §8.3 / RQ-1 / RQ-2):
  * `submit(event, on_done=…)` — the callback fires once the run has finished,
    which is what lets the consumer defer its offset commit until then.
  * `drain(timeout)` — SIGTERM must WAIT for in-flight `claude` runs rather than

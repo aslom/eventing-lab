@@ -1,12 +1,12 @@
 # Glossary
 
-Terms specific to <PROJECT>, or general terms this repo uses in a narrower sense than usual.
+Terms specific to eventing-lab, or general terms this repo uses in a narrower sense than usual.
 The second category matters more than the first: a borrowed word used precisely is harder to
 spot than an invented one, and causes more confusion.
 
 Keep entries short — one or two sentences, linking the spec that defines the term fully.
 
-## <PROJECT> terms
+## eventing-lab terms
 
 **<term>** — <definition in one sentence.> See
 `specs/<file>.md`.

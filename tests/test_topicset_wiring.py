@@ -1,4 +1,4 @@
-"""`TopicSet` threaded through the producer and consumers. DESIGN_PHASE3.md §3.2, T2.
+"""`TopicSet` threaded through the producer and consumers. docs/specs/0004-phase3-tenancy-agents-triggers.md §3.2, T2.
 
 §9's step 2 is "no behaviour change whatsoever; the existing suite is the check". That
 suite is the real assertion; these tests pin the *intent* so a later change that breaks

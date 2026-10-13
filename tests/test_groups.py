@@ -523,7 +523,7 @@ def test_a_member_event_without_a_groupid_is_still_suppressed(svc):
 
     Suppression used to read `ce_groupid` off the event, so a frame that simply OMITTED
     it was not a group member as far as the check was concerned: it was pushed, stored
-    in the member's transcript and shown on the group page. `DESIGN_PHASE2.md` §8.5.4
+    in the member's transcript and shown on the group page. `docs/specs/0003-phase2-identity-on-the-event-path.md` §8.5.4
     states the rule this is an instance of -- prefer deciding on state the attacker does
     not supply: group membership from the store, not the groupid on the frame.
 

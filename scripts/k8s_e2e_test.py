@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Minimal Kubernetes end-to-end test. DESIGN_PHASE1.md §14, task T5.1.
+"""Minimal Kubernetes end-to-end test. docs/specs/0002-phase1-keda-kubernetes.md §14, task T5.1.
 
 Mirrors docker_e2e_test.py in structure, flags and output style — same
 `[e2e] PASS` lines, same "exit 0 only if every assertion passed" contract. Runs

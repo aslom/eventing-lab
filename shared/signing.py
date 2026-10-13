@@ -1,4 +1,4 @@
-"""Detached JWS over the CloudEvent envelope. DESIGN_PHASE1.md §11.
+"""Detached JWS over the CloudEvent envelope. docs/specs/0002-phase1-keda-kubernetes.md §11.
 
 Feature-flagged and **off by default**, so the e2e path is unaffected. Both services
 use this module: EventBridge signs the requests and group events it publishes,
@@ -188,7 +188,7 @@ SIGNED_ATTRS = ("specversion", "type", "source", "id", "time", "subject",
                 # Added once signing had real callers. `submitter`/`submitteriss`
                 # were held back deliberately: covering them before anything signed
                 # would have invalidated canonicalisation twice for no benefit.
-                # `groupid` is required by DESIGN_PHASE1.md §21.9.9 — without it a
+                # `groupid` is required by docs/specs/0002-phase1-keda-kubernetes.md §21.9.9 — without it a
                 # signature says nothing about which batch an event belongs to, so a
                 # forged `groupid` could move a response into another batch and
                 # corrupt its fan-in counts.

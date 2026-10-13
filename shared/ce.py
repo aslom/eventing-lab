@@ -1,7 +1,7 @@
 """CloudEvent envelope helpers and a tiny binary-mode Kafka binding.
 
 Both components independently derive `sessionuuid = uuid5(NAMESPACE, correlationid)`
-so no mapping table is needed on the /continue hot path. See DESIGN_PHASE0.md §2.3.
+so no mapping table is needed on the /continue hot path. See docs/specs/0001-phase0-local-wire-contract.md §2.3.
 
 Binary-mode Kafka binding: attributes ride Kafka headers as `ce_*` bytes,
 Kafka value is the raw data payload (JSON-encoded when datacontenttype is

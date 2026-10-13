@@ -1,4 +1,4 @@
-"""Tenancy keys and the names derived from them. DESIGN_PHASE3.md §2.3, §3.1, §4.2.
+"""Tenancy keys and the names derived from them. docs/specs/0004-phase3-tenancy-agents-triggers.md §2.3, §3.1, §4.2.
 
 This is the ONLY place an identity becomes a name. Phase 2 put a login on the event
 as an audit label (`ce_submitter`); Phase 3 turns it into a tenancy key that names

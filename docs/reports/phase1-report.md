@@ -1,7 +1,12 @@
 # IMPLEMENTATION REPORT — Phase 1
 
-Scope: implementation of `DESIGN_PHASE1.md` (revision 2) — tasks T0 through T5.
-Runbook: `README_PHASE1.md`.
+Status: Complete <!-- Phase 1 observed working on the ykt1 cluster -->
+Date: 2026-10-03
+Spec: [`../specs/0002-phase1-keda-kubernetes.md`](../specs/0002-phase1-keda-kubernetes.md)
+Covers: T0 through T5 — KEDA scaling on consumer lag, scale-to-zero, and agent groups
+
+Scope: implementation of `../specs/0002-phase1-keda-kubernetes.md` (revision 2) — tasks T0 through T5.
+Runbook: `../demos/phase1-demo.md`.
 
 Phase 1 is **implemented and observed working on the `ykt1` cluster**. "Done"
 means the §16 four-stage loop was watched happening, not that code was written:
@@ -61,7 +66,7 @@ Unit tests went from **100 passing to 286** (8 new files, 155 new tests).
 
 ## 2. T1.7 — the fact the Gap B fix rests on, now proven
 
-`DESIGN_PHASE1.md` §16 chose "checkpoint the transcript through EventBridge" on
+`../specs/0002-phase1-keda-kubernetes.md` §16 chose "checkpoint the transcript through EventBridge" on
 the strength of a documented but unverified claim, and flagged it as the first
 gate on the implementation. `scripts/verify_resume_by_path.py` now proves it, and
 is re-runnable for about two cents:
@@ -379,7 +384,7 @@ green.
 
 ## 5. The second target: a local Kind cluster
 
-Added after the fact, per `DESIGN_PHASE1.md` §3.2. The point was to make the
+Added after the fact, per `../specs/0002-phase1-keda-kubernetes.md` §3.2. The point was to make the
 reference cluster optional — it is shared, occasionally rate-limited, and behind a
 VPN — **without changing a single application manifest.** That held: `base/` and
 `k8s/topics/` are byte-identical between the two environments, and the only
@@ -579,7 +584,7 @@ page and its own rows, and a batch produces **exactly two notifications** instea
 | Progress | `eventbridge/groups.py` — denominator, ETA from observed throughput, stall detection |
 | Pages | `/v0/groups/<id>` (dashboard), `/v0/groups` (list, HTML or JSON by `Accept`) |
 | API | `POST /v0/groups`, `/status`, `/close`, `/cancel`; `POST /v0/agents` takes `groupid` |
-| CLI | `group run|status|watch|list` |
+| CLI | `group run\|status\|watch\|list` |
 | Tests | **56** in `tests/test_groups.py` |
 
 ### Measured on ykt1: a group of 100
@@ -814,7 +819,7 @@ That is RQ-1 behaving exactly as designed, observed by accident.
   exercised on a cluster. EventBridge does not sign.
   *(Superseded twice. **Phase 2**: EventBridge signs requests and group events,
   EventRunner signs terminal responses, and both verify against the approved-key set —
-  the reject paths have tests. See `DESIGN_PHASE2.md` §4. **#896**:
+  the reject paths have tests. See `../specs/0003-phase2-identity-on-the-event-path.md` §4. **#896**:
   `k8s_demo_flow.py --overlay kind-signed` now drives the signed path and asserts a
   forgery is refused, so the gap is a script that exists rather than one that does not.
   What remains unclosed is the run itself: as of 2026-10-12 **nobody has executed it

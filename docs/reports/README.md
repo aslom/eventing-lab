@@ -8,11 +8,17 @@ was true when someone ran it. Both are committed, and they are kept separate on 
 
 ## Index
 
-| Report                                           | Covers                | Spec                                              | Status  |
-| ------------------------------------------------ | --------------------- | ------------------------------------------------- | ------- |
-| `<topic>-report.md`                              | <what phase/slice>    | `../specs/<file>.md`                              | Partial |
+| Report                                      | Covers                                              | Spec                                                                                     | Status   |
+| ------------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------- | -------- |
+| [`phase0-report.md`](phase0-report.md)      | The full Phase 0 wire contract, local and unsigned  | [`0001-phase0-local-wire-contract.md`](../specs/0001-phase0-local-wire-contract.md)      | Complete |
+| [`phase1-report.md`](phase1-report.md)      | T0-T5: KEDA scaling, scale-to-zero, agent groups    | [`0002-phase1-keda-kubernetes.md`](../specs/0002-phase1-keda-kubernetes.md)              | Complete |
+| [`phase3-report.md`](phase3-report.md)      | §9 steps 1-4, plus T5, T13 and T22                  | [`0004-phase3-tenancy-agents-triggers.md`](../specs/0004-phase3-tenancy-agents-triggers.md) | Partial  |
 
-<!-- One row per report. "Status: Partial" is normal and useful — see below. -->
+There is deliberately **no Phase 2 report**: signing landed as code but was never written up
+against its spec, and Phase 2 §8 is where the gap between its claims and the code is recorded.
+Phase 4 has no report because it is design only.
+
+`phase3-report.md` is the live one — it is extended as later steps land rather than rewritten.
 
 ## The one rule: a report is never rewritten
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pre-deployment checks. DESIGN_PHASE1.md §12, task T4.1.
+"""Pre-deployment checks. docs/specs/0002-phase1-keda-kubernetes.md §12, task T4.1.
 
 Every check corresponds to a failure that is slow or confusing to diagnose later,
 so every one fails loudly WITH the remediation. Goal 1 (§2) — a reachable public

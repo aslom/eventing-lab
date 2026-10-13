@@ -1,4 +1,4 @@
-"""The approved-user registry and the `Caller` it produces. DESIGN_PHASE3.md §2.4, §2.5.
+"""The approved-user registry and the `Caller` it produces. docs/specs/0004-phase3-tenancy-agents-triggers.md §2.4, §2.5.
 
 Two refusals carry most of the weight here, and both are startup refusals rather than
 per-request errors:

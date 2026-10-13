@@ -1,4 +1,4 @@
-# Topics as Strimzi CRs. DESIGN_PHASE1.md §6.
+# Topics as Strimzi CRs. docs/specs/0002-phase1-keda-kubernetes.md §6.
 #
 # TWO details here are mandatory and both fail confusingly if wrong:
 #

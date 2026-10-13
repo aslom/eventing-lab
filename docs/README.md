@@ -1,4 +1,4 @@
-# <PROJECT> documentation
+# eventing-lab documentation
 
 This directory is the repo's documentation spine. Five kinds of document live here, each
 with a different lifecycle — the table below is the router, and
@@ -9,7 +9,7 @@ document goes.
 
 | If you want to…                                      | Read                                                 |
 | ---------------------------------------------------- | ---------------------------------------------------- |
-| Understand the whole system in one sitting           | `<PROJECT>-overview.md`                              |
+| Understand the whole system in one sitting           | `eventing-lab-overview.md`                              |
 | Know **why** a decision was made                     | [`adrs/`](adrs/) — one decision per file, permanent  |
 | Get the **full design** of a subsystem               | [`specs/`](specs/) — deep dives, living              |
 | Know what a phase **actually built and measured**    | [`reports/`](reports/) — append-only, never rewritten |
@@ -29,7 +29,7 @@ results, including the parts that went wrong.
 
 | Artifact     | Answers                                           | Retention                                                      | Home                        |
 | ------------ | ------------------------------------------------- | -------------------------------------------------------------- | --------------------------- |
-| **Overview** | the whole picture, briefly                        | committed, **kept current**                                    | `docs/<PROJECT>-overview.md` |
+| **Overview** | the whole picture, briefly                        | committed, **kept current**                                    | `docs/eventing-lab-overview.md` |
 | **Spec**     | _what & why_, in depth — alternatives, trade-offs | committed, **revised in place** with a version changelog       | [`specs/`](specs/)          |
 | **ADR**      | one significant decision + consequences           | committed, **permanent & immutable**                           | [`adrs/`](adrs/)            |
 | **Report**   | what a phase built, **measured**; deltas; findings | committed, **append-only — never rewritten**                   | [`reports/`](reports/)      |
@@ -73,6 +73,55 @@ than deleting it. The record of what we once thought, and why we changed, has va
   `phase<N>-<topic>-report.md` for phase-structured work.
 - **Cross-link relatively** (`../adrs/0004-foo.md`). CI checks that these resolve, so a
   rename that breaks a link fails the build rather than rotting silently.
+
+
+The documents below are this project's own: five phase designs, the reports that measured
+them, and the runbooks that drive them. They came over from `rossoctl/examples` with the
+code and were remapped onto the convention above.
+
+## Reading order — the eventing phase documents
+
+- **Deciding whether to fund, demo or depend on this?**
+  [`eventing-lab-overview.md`](eventing-lab-overview.md) — what each phase
+  decided, what is built as opposed to designed, and the KubeCon commitment with its
+  gaps. It cites these documents rather than restating them, and it is the only one
+  written for a reader who will not open the code.
+- **Running it?** [`demos/phase1-demo.md`](demos/phase1-demo.md), or the [Phase 1
+  section](../README.md#phase-1--kubernetes-and-keda) of the component README for
+  the short version.
+- **Changing it?** [`specs/0001-phase0-local-wire-contract.md`](specs/0001-phase0-local-wire-contract.md) for the wire contract that
+  must not change, then [`specs/0002-phase1-keda-kubernetes.md`](specs/0002-phase1-keda-kubernetes.md) for the deployment
+  model.
+- **Working on auth or identity?** [`specs/0003-phase2-identity-on-the-event-path.md`](specs/0003-phase2-identity-on-the-event-path.md) §2.1 first:
+  the opaque-token constraint is what rules out the design most people reach for.
+- **Debugging something odd in the tenancy code?**
+  [`reports/phase3-report.md`](reports/phase3-report.md) §4 — the findings are there with
+  the symptom that hid each one, and §5 lists what is not verified at all.
+- **Debugging something odd?** [`reports/phase1-report.md`](reports/phase1-report.md)
+  §4 — most surprises are already recorded there with their cause.
+- **Writing a claim about a control, in any phase?**
+  [`specs/0003-phase2-identity-on-the-event-path.md`](specs/0003-phase2-identity-on-the-event-path.md) §8.5 for the five questions to ask before it
+  ships, then §8.1-§8.3 for what thirteen such claims in this repository got wrong and
+  how. The findings are Phase 2's; the questions are not.
+- **Presenting it?** [`specs/0003-phase2-identity-on-the-event-path.md`](specs/0003-phase2-identity-on-the-event-path.md) §2.6 and §3, for what the
+  identity controls do _not_ prove — and §8, because four of them promise more than
+  the code delivers.
+- **Working on the KubeCon talk?** [`notes/kubecon-na-2026.md`](notes/kubecon-na-2026.md) — §2 for
+  what is and is not backed by code, §3 for the SPIRE decision that has to be made
+  first, §5 for the 30-minute shape. §7 records what the review that produced it found
+  that no single document states.
+- **Working on multi-tenancy, agent definitions or triggers?**
+  [`specs/0004-phase3-tenancy-agents-triggers.md`](specs/0004-phase3-tenancy-agents-triggers.md) — §9 for the rollout order (the first four steps are
+  refactors; everything risky is behind a flag that defaults off), §3.6 for what isolation does
+  and does not claim without Kafka ACLs, and §7.7 before writing any of the trigger code.
+- **Working on notifications, enrollment or human-in-the-loop approval?**
+  [`specs/0005-phase4-enrollment-and-permission.md`](specs/0005-phase4-enrollment-and-permission.md) §2 first — it is the measured mechanism the rest
+  of the phase rests on, and §2.1 rules out the design the documentation points at. Then
+  §5.4 for the control that matters most (the approval is bound to the tool input, not
+  just the approval id) and §9.4 for the hole that remains.
+
+The `PHASE0` documents describe a laptop demo and remain accurate for that; where
+Phase 1 supersedes them it says so explicitly rather than editing them in place.
 
 ---
 

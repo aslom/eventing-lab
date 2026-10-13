@@ -1,6 +1,7 @@
 # DESIGN — Phase 0: Local Signed-Event Wake Demo (no Kubernetes)
 
-Status: draft
+Version: 1.0 — October 2026
+Status: Implemented <!-- measured in ../reports/phase0-report.md -->
 Scope: Phase 0 — everything runs on a single macOS/Linux developer machine. No Kubernetes, no KEDA scaler, no cloud broker. Kafka runs locally from a tarball (see the running instance on `localhost:9092`).
 
 Phase 0 exists to prove the **event-shaped control path** end to end:
@@ -1168,7 +1169,7 @@ PASS  3 req  24 rsp  3 ntfy events observed
 
 ```
 rossoctl-keda1/
-├── DESIGN_PHASE0.md              (this file)
+├── ../specs/0001-phase0-local-wire-contract.md              (this file)
 ├── AGENTS.md                     (session notes: ntfy on macOS)
 ├── pyproject.toml                (uv-managed; two console-scripts)
 ├── uv.lock

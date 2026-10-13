@@ -1,15 +1,35 @@
-# <PROJECT> — agent instructions
+# eventing-lab — agent instructions
 
-<One paragraph: what this repo is, and the one thing an agent most needs to know before
-changing it.>
+Event-driven plumbing that wakes a Claude Code agent from a Kafka message and streams every
+step of its run back out as CloudEvents. The thing to know before changing anything: **the
+wire contract is load-bearing and is not yours to change casually.** The CloudEvent envelope,
+the `sessionuuid = uuid5(NAMESPACE, correlationid)` derivation, and per-correlation FIFO
+ordering are specified in [`docs/specs/0001-phase0-local-wire-contract.md`](docs/specs/0001-phase0-local-wire-contract.md)
+and both services depend on them. `tests/test_router.py` and `tests/test_roundtrip_binary.py`
+exist to catch exactly that kind of drift.
+
+This package requires **Python >= 3.14** (free-threaded) and declares its own `[tool.ruff]`
+section in `pyproject.toml`; `ruff format` is deliberately scoped out, so don't reformat it.
 
 ## Repository layout
 
 ```
-<PROJECT>/
+eventing-lab/
 ├── docs/              # the documentation spine — see docs/README.md
-└── <your code>/
+├── eventbridge/       # WSGI HTTP front door (:8080), Kafka producer + consumer,
+│                      #   SQLite event store, HTML/SSE views, ntfy fan-out
+├── eventrunner/       # Kafka consumer that spawns `claude` per request and turns
+│                      #   stream-json into response CloudEvents
+├── shared/            # CloudEvent envelope helpers, binary Kafka binding, signing,
+│                      #   tenancy keys, PID files, correlation word lists
+├── tests/             # ~978 unit tests — no Kafka and no `claude` needed
+├── scripts/           # build/push images, Kind setup, k8s deploy, e2e + demo flows
+├── k8s/               # base manifests, Kind config, overlays, KafkaTopics
+└── skills/            # the eventbridge agent skill and its OpenAPI notes
 ```
+
+Run the tests with `uv run --extra dev python -m pytest tests -q`. They need neither a broker
+nor a `claude` binary; anything that would is a script under `scripts/`.
 
 ## Documentation — where things go
 

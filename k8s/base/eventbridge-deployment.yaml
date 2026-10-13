@@ -112,7 +112,7 @@ spec:
         # A Secret PER SERVICE, not one shared between them. A single seed would mean
         # EventBridge holds the key it verifies runner responses with, so it could
         # forge any agent's answer and an agent could forge another's — which is the
-        # exact property that made HMAC unacceptable (DESIGN_PHASE2.md §4.3). Two
+        # exact property that made HMAC unacceptable (docs/specs/0003-phase2-identity-on-the-event-path.md §4.3). Two
         # Secrets is what keeps "only this agent could have produced this" true.
         - name: signing-key
           secret:

@@ -1,4 +1,4 @@
-"""Declarative agent definitions and the argv they produce. DESIGN_PHASE3.md §5.1-§5.5.
+"""Declarative agent definitions and the argv they produce. docs/specs/0004-phase3-tenancy-agents-triggers.md §5.1-§5.5.
 
 The load-bearing test here is `test_default_spec_reproduces_phase2_argv_exactly`. §5.1's
 whole claim to being additive is that an unspecified field inherits Phase 2's behaviour,

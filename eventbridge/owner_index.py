@@ -1,4 +1,4 @@
-"""The global `correlationid -> userkey` index. DESIGN_PHASE3.md §2.6, §6.2.
+"""The global `correlationid -> userkey` index. docs/specs/0004-phase3-tenancy-agents-triggers.md §2.6, §6.2.
 
 **The one table that is deliberately cross-tenant**, and it has to be: the lookup that
 decides *which* tenant owns a correlation must happen before a tenant — and therefore

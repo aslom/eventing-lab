@@ -1,6 +1,6 @@
 """Liveness probe: has the consumer loop made progress recently?
 
-DESIGN_PHASE1.md §8.4. The failure this exists to catch is a *live process with a
+docs/specs/0002-phase1-keda-kubernetes.md §8.4. The failure this exists to catch is a *live process with a
 dead thread*: if the Kafka consumer thread raises, EventRunner's main thread keeps
 running, so the pod stays `Running` and reports healthy while consuming nothing.
 A process check cannot see it, and EventRunner has no HTTP server to probe.

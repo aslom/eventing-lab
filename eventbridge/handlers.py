@@ -755,7 +755,7 @@ class Handlers:
         EventRunner calls this after every turn. It exists because the runner is
         stateless and its `$HOME` is a pod's ephemeral layer, so without a
         checkpoint a `/continue` after a scale-to-zero has no transcript to
-        resume from (DESIGN_PHASE1.md §16 Gap B). EventBridge is already the
+        resume from (docs/specs/0002-phase1-keda-kubernetes.md §16 Gap B). EventBridge is already the
         single-replica component with a volume and a store (§8.6), so this needs
         no new backing service.
         """

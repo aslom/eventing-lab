@@ -80,7 +80,7 @@ class Cfg:
     # there has to be a way to watch the reject rate before turning it on.
     require_response_signature: bool = False
 
-    # ---- Phase 3 (DESIGN_PHASE3.md §8.1) ----
+    # ---- Phase 3 (docs/specs/0004-phase3-tenancy-agents-triggers.md §8.1) ----
 
     # §3.2 / §8.1 — `single` is Phase 2 behaviour: one topic pair, one store, no
     # ownership checks. `multi` is everything in §3-§7. Default `single` so an existing
@@ -193,7 +193,7 @@ def load() -> Cfg:
     if cfg.tenancy_mode not in (tenancy.SINGLE, tenancy.MULTI):
         raise SystemExit(
             f"EB_TENANCY_MODE must be {tenancy.SINGLE!r} or {tenancy.MULTI!r}, "
-            f"got {cfg.tenancy_mode!r}. See DESIGN_PHASE3.md §8.1.")
+            f"got {cfg.tenancy_mode!r}. See docs/specs/0004-phase3-tenancy-agents-triggers.md §8.1.")
     cfg.topic_prefix = e("EB_TOPIC_PREFIX", cfg.topic_prefix)
     # The prefix is the one component of a topic name `tenancy._slug` never sees, so it
     # is validated here instead. A prefix containing `_` or `.` produces exactly the JMX
@@ -205,7 +205,7 @@ def load() -> Cfg:
             f"EB_TOPIC_PREFIX must be 1-32 of [a-zA-Z0-9-], got "
             f"{cfg.topic_prefix!r}. `.` and `_` are excluded on purpose: Kafka's JMX "
             f"metric names flatten both, so two topics differing only in which one they "
-            f"use silently share one metric. See DESIGN_PHASE3.md §3.1.")
+            f"use silently share one metric. See docs/specs/0004-phase3-tenancy-agents-triggers.md §3.1.")
     cfg.user_registry_path = e("EB_USER_REGISTRY_PATH", cfg.user_registry_path)
     # Readable refusal rather than a bare ValueError traceback, matching every other
     # refusal on this startup path.

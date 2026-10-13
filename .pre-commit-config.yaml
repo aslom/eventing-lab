@@ -38,3 +38,11 @@ repos:
     rev: v8.21.2
     hooks:
       - id: gitleaks
+
+  # Python lint, matching the version and scope the CI `lint` job pins. Note there is no
+  # ruff-format hook on purpose: pyproject.toml sets [tool.ruff.format] exclude = ["*"]
+  # for this package, and CI does not run the formatter either.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.4
+    hooks:
+      - id: ruff

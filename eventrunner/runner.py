@@ -2,7 +2,7 @@
 
 The public entry point is `run_agent(event)`. It never returns until the
 subprocess exits and the terminal `result` event has been emitted. See
-DESIGN_PHASE0.md §4.3 and §4.5.
+docs/specs/0001-phase0-local-wire-contract.md §4.3 and §4.5.
 """
 from __future__ import annotations
 
@@ -370,7 +370,7 @@ def run_agent(cfg: Cfg, emitter: Emitter, event, *, transcripts=None) -> None:
         else:
             print(f"[eventrunner] no transcript available for {corr}; falling back to "
                   f"--resume {session} (will fail if the session was started in a "
-                  f"pod that is gone — DESIGN_PHASE1.md §16 Gap B)",
+                  f"pod that is gone — docs/specs/0002-phase1-keda-kubernetes.md §16 Gap B)",
                   file=sys.stderr, flush=True)
 
     cmd = build_cmd(cfg, event, payload, resume_target=resume_target, spec=spec)

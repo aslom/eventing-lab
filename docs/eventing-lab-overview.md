@@ -6,7 +6,7 @@ cited to the document that measured them.
 
 **Audience:** someone deciding whether to fund, demo, or depend on this — not
 someone changing the code. For that, read
-[`agentdocs/README.md`](../agentdocs/README.md) and follow its reading order.
+[`docs/README.md`](README.md) and follow its reading order.
 
 **Status date:** 2026-10-09. The implementation status in §4 and the KubeCon
 figures in §5 expire; §§1–3 do not. Where a number appears here it is quoted
@@ -32,7 +32,7 @@ consumer, SQLite event store, HTML/SSE transcript view and ntfy fan-out.
 each `stream-json` frame into a response CloudEvent.
 
 One constraint runs through every phase: **pure Python, no C extensions**
-(`DESIGN_PHASE0.md` §1.1). It is why Ed25519 is implemented from RFC 8032 by
+(`specs/0001-phase0-local-wire-contract.md` §1.1). It is why Ed25519 is implemented from RFC 8032 by
 hand, and — see §5 — it is what makes the SPIRE upgrade path expensive.
 
 ## 2. The phases at a glance
@@ -87,10 +87,10 @@ terminal event makes consumer lag a correct queue gauge *and* makes it
 structurally impossible for KEDA to scale away a pod mid-stream. The fix for
 "never miss an event" is also the fix for "don't kill a running agent". Observed
 by accident: a real run sat in 429 retry backoff for 300 s and replicas stayed
-at or above 1 for all 300 s (`KUBECON_NA_2026.md` §2.3).
+at or above 1 for all 300 s (`notes/kubecon-na-2026.md` §2.3).
 
 Three gaps, each measured on the broker rather than assumed
-(`DESIGN_PHASE1.md` §16):
+(`specs/0002-phase1-keda-kubernetes.md` §16):
 
 | Gap | What it is | Resolution |
 |---|---|---|
@@ -106,7 +106,7 @@ decrementing counter double-decrements under at-least-once redelivery and fires
 per-member terminal facts with derived counts, and a completion guarded by a
 conditional SQL update so it survives an EventBridge restart.
 
-**Measured** (`IMPLEMENTATION_REPORT1.md` §3) — state which cluster when quoting
+**Measured** (`reports/phase1-report.md` §3) — state which cluster when quoting
 these, as the two are not comparable:
 
 | | Measured |
@@ -175,7 +175,7 @@ change that introduced it, and stayed true only for the configuration that
 change was exercised in.* And the detail that should worry anyone relying on a
 test suite as evidence: **all thirteen coexisted with a passing suite** — 904
 tests collected at the time of the Phase 2 review, 896 passing on CI
-(`KUBECON_NA_2026.md` §2) — because the tests exercised the configuration each
+(`notes/kubecon-na-2026.md` §2) — because the tests exercised the configuration each
 claim was true in.
 
 That produced **five questions to ask of any control claim before it ships**
@@ -267,7 +267,7 @@ Two statuses deserve emphasis because they are easy to misread.
 **Phase 3's `multi` mode is for developing against, not running.** It gives each
 tenant its own store and topics, but until T6 neither consumer subscribes to the
 per-user topics, so **no response is ever consumed** — transcript pages stay
-empty and group counters never advance (`IMPLEMENTATION_REPORT3.md` §5, which is
+empty and group counters never advance (`reports/phase3-report.md` §5, which is
 explicit that this is a more useful warning than "not yet isolated", because the
 latter implies a working-but-unisolated mode). Reads are also not owner-scoped: a
 read routes to the owning tenant's store, but nothing checks the caller is that
@@ -285,7 +285,7 @@ rejected response can still end a batch even when it is `true`.
 
 The accepted talk — *The Seams Are the Trap: Agent Fleets from CNCF Parts You
 Already Have* — commits to a four-seam taxonomy and five live demo beats.
-Assessed against the code (`KUBECON_NA_2026.md`, with the open-issue state
+Assessed against the code (`notes/kubecon-na-2026.md`, with the open-issue state
 re-checked 2026-10-09):
 
 | Beat | State |
@@ -355,10 +355,10 @@ to be a gate on new work rather than a retrospective on old work.
 
 | For | Read |
 |---|---|
-| The whole document set and its reading order | [`agentdocs/README.md`](../agentdocs/README.md) |
-| The wire contract that must not change | [`agentdocs/DESIGN_PHASE0.md`](../agentdocs/DESIGN_PHASE0.md) |
-| Running it, in any of four environments | [`agentdocs/README_PHASE1.md`](../agentdocs/README_PHASE1.md) |
-| Identity, and the thirteen findings | [`agentdocs/DESIGN_PHASE2.md`](../agentdocs/DESIGN_PHASE2.md) §8 |
-| Writing a claim about a control, in any phase | [`agentdocs/DESIGN_PHASE2.md`](../agentdocs/DESIGN_PHASE2.md) §8.5 |
-| What the tenancy work has actually built, and what `multi` does not do | [`agentdocs/IMPLEMENTATION_REPORT3.md`](../agentdocs/IMPLEMENTATION_REPORT3.md) §5 |
-| The talk: status, plan, slide shape | [`agentdocs/KUBECON_NA_2026.md`](../agentdocs/KUBECON_NA_2026.md) |
+| The whole document set and its reading order | [`docs/README.md`](README.md) |
+| The wire contract that must not change | [`specs/0001-phase0-local-wire-contract.md`](specs/0001-phase0-local-wire-contract.md) |
+| Running it, in any of four environments | [`demos/phase1-demo.md`](demos/phase1-demo.md) |
+| Identity, and the thirteen findings | [`specs/0003-phase2-identity-on-the-event-path.md`](specs/0003-phase2-identity-on-the-event-path.md) §8 |
+| Writing a claim about a control, in any phase | [`specs/0003-phase2-identity-on-the-event-path.md`](specs/0003-phase2-identity-on-the-event-path.md) §8.5 |
+| What the tenancy work has actually built, and what `multi` does not do | [`reports/phase3-report.md`](reports/phase3-report.md) §5 |
+| The talk: status, plan, slide shape | [`notes/kubecon-na-2026.md`](notes/kubecon-na-2026.md) |

@@ -1,4 +1,4 @@
-"""The global `correlationid -> userkey` index. DESIGN_PHASE3.md §2.6, §6.2.
+"""The global `correlationid -> userkey` index. docs/specs/0004-phase3-tenancy-agents-triggers.md §2.6, §6.2.
 
 The uniqueness constraint is the load-bearing part, and the test that matters most is
 `test_the_constraint_is_on_correlationid_alone`: `(userkey, correlationid)` is the right

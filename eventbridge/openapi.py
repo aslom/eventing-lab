@@ -64,7 +64,7 @@ def spec() -> dict:
                         "so KEDA scales past one pod. Submitting one at a time lets each "
                         "finish before the next arrives and nothing ever scales. "
                         "Send an Idempotency-Key header so a client retry cannot launch "
-                        "the batch twice. See DESIGN_PHASE1.md §21."
+                        "the batch twice. See docs/specs/0002-phase1-keda-kubernetes.md §21."
                     ),
                     "operationId": "createGroup",
                     "parameters": [{"in": "header", "name": "Idempotency-Key",
@@ -147,7 +147,7 @@ def spec() -> dict:
                         "issued after the agent scaled to zero has no transcript to resume "
                         "from. EventBridge is the single-replica component with a volume, so "
                         "it is where per-correlation session state lives. "
-                        "See DESIGN_PHASE1.md §16 Gap B."
+                        "See docs/specs/0002-phase1-keda-kubernetes.md §16 Gap B."
                     ),
                     "operationId": "putTranscript",
                     "parameters": [{"in": "path", "name": "correlationid", "required": True, "schema": {"type": "string"}}],
