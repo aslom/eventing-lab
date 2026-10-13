@@ -8,13 +8,37 @@ placeholder for something richer:
 
 * It needs no issuer, no network call, and no clock, so it works identically on a
   laptop and in a cluster.
-* It is the same shape as a JWKS, so the upgrade path — SPIRE issuing and rotating
-  the keys, rooted in workload attestation — replaces *where the keys come from*
-  without changing a line of verification logic.
+* The `kid` indirection is the part a richer issuer would reuse: selecting a key by
+  the name the token carries is what SPIRE-issued keys would also need.
 
-What it does not do is attest anything. The set records which keys an operator
-approved, not which workloads a platform vouched for. Say that plainly when
-demoing it.
+**What the upgrade path to SPIRE actually costs.** An earlier revision of this
+docstring claimed the set "is the same shape as a JWKS, so the upgrade path — SPIRE
+issuing and rotating the keys — replaces *where the keys come from* without changing a
+line of verification logic." That is false in three ways, and it is corrected here
+rather than quietly deleted because the talk points readers at this file:
+
+* **The verifier accepts EdDSA only.** `signing.verify_event` refuses any other `alg`
+  outright; SPIRE issues EC or RSA SVIDs. Supporting them means an issuer-agnostic
+  verifier — EC/RSA added to a hand-rolled pure-Python implementation whose
+  `_scalar_mult` is documented as not side-channel resistant, or relaxing the
+  no-C-extensions rule and adopting `cryptography`.
+* **This is not JWKS shape.** A JWKS is `{"keys": [ {kty, kid, x, ...}, ... ]}` — a
+  *list of key objects*. `load()` requires a flat JSON object of `kid` to an encoded
+  32-byte string, so it rejects a JWKS document rather than reading it.
+* **Only the kid lookup survives.** The algorithm and the file format do not.
+
+So the upgrade is a real piece of work, not a configuration change. See
+`docs/specs/0003-phase2-identity-on-the-event-path.md` §8.3.
+
+What the set does not do at all is attest anything. It records which keys an operator
+approved, not which workloads a platform vouched for. Say that plainly when demoing it.
+
+One consequence that is easy to miss: a flat set makes the asymmetric keys
+**attribution, not restriction.** It tells you *which approved key* signed, not that
+this particular agent was permitted to answer this particular request — EventBridge's
+own key is in the verify set by requirement, so its signature validates on any run's
+answer, as does any approved runner's. Group lifecycle events are pinned to
+`EB_SIGNING_KID` for exactly this reason; member answers are not.
 
 File format — a JSON object of `kid` to public key, each 32 bytes encoded as hex,
 base64 or base64url:

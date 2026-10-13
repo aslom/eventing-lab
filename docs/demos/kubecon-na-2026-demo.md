@@ -28,7 +28,7 @@ failure mode with no recovery.
 | **5** | Audit trail over the topic | 🟡 **PARTIAL** | built, never run on a cluster |
 | **6** | Forged *request* refused — the wake itself | 🟡 **PARTIAL** | scripted + tested, never run on a cluster |
 | **7** | Back to zero when idle | 🟢 **DOABLE TODAY** | — |
-| **8** | Blocked egress on a wrong-scope call | 🔴 **NEEDS WORK** | **cut it** — see §8 |
+| **8** | Blocked egress on a wrong-scope call | 🔴 **NEEDS WORK** | **cut it** — see §9 |
 | **—** | Allowlist drift between submit and wake | 🟡 **PARTIAL** | enforcement built; needs a demo stage |
 | **—** | No SVID, no consumption | 🔴 **NEEDS WORK** | no SPIRE anywhere |
 
@@ -86,7 +86,7 @@ not comparable. Pick one and say which on the slide.
 python3 scripts/k8s_demo_flow.py --overlay kind-signed
 ```
 
-That drives acts 1–6 in order with assertions and timings. The acts below break out what is
+That drives acts 1–7 in order with assertions and timings. The acts below break out what is
 on screen and what to say over it.
 
 ---
@@ -286,7 +286,7 @@ decision.
 **This is now a demonstrable claim, not just a nice line.** `ER_ALLOWED_SUBMITTERS` is read
 in `config.from_env` at startup and never per record, so editing it while replicas are 0
 means the next wake enforces the new list. What is missing is a *stage* that performs the
-edit on camera — see §9.2.
+edit on camera — see §10.1.
 
 That is also the setup for the seam you are *not* demoing — see §9.
 
@@ -430,7 +430,7 @@ ykt1 and the cycle back to zero is 30–31 s, before the agent does any work.
 | 5–9 | The four seams, all named — the take-home artifact |
 | 9–13 | Seams 1 + 4: the wake contract and bound audit. Lead with the lag insight |
 | 13–17 | Seams 2 + 3: scope drift and delivery. Name what they do **not** prove |
-| 17–21 | **Demo** (recorded, narrated) — acts 1–6. Hard stop at 4 min |
+| 17–21 | **Demo** (recorded, narrated) — acts 1–7. Hard stop at 4 min |
 | 21–25 | **§8: thirteen claims that did not hold** — the differentiator |
 | 25–27 | What's next: the SPIRE upgrade path with its obstacles; Phase 3 tenancy as design |
 | 27–30 | Questions |

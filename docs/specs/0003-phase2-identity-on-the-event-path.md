@@ -407,6 +407,15 @@ distinction is the point: one is public by construction, the others grant access
 adds 40 and regresses nothing. No test reaches the network — the device flow and
 `GET /user` are exercised through injected fakes.
 
+> **Footnote, added 2026-10-13.** The `490/5` above is Phase 2's own *delta*
+> measurement — "adds 40 over a 450/5 baseline on the same tree" — and is **left as
+> written on purpose.** It is not a live claim about the suite, and overwriting it
+> would destroy the arithmetic it exists to support; a historical measurement never
+> stopped being true. For the current figure, run the suite and quote the **collected**
+> count with its environment (`uv run --extra dev python -m pytest tests -q`), as
+> `../notes/kubecon-na-2026.md` §2 instructs — CI and a laptop with the `claude` CLI on
+> `PATH` legitimately differ by a few skips, so a bare pass number is not reproducible.
+
 Verified end to end against a real GitHub account, not only in unit tests:
 
 | Check | Result |

@@ -79,8 +79,8 @@ particular are **not** what §2.1's seam rows were previously assessed against.
 | # | What must be on screen | State |
 |---|---|---|
 | **R1** | EventRunner does **not process any event** until an agent SVID is issued and verified — a sidecar reading SVIDs at runtime | ❌ no SPIRE anywhere; the runner reads a seed from a Secret **file** at startup and waits for nothing |
-| **R2** | The sender allowlist changes between submit and wake; the same event is accepted, then refused | ❌ **EventRunner never reads `ce_submitter`.** It verifies that EventBridge *signed*, not *who asked*. Needs a runner-side allowlist |
-| **R3** | Inject an event into the Kafka **requests** topic; EventRunner refuses it | 🟡 the control exists (`verify_request` → `rejected_unsigned`, agent never run) — no demo stage drives it |
+| **R2** | The sender allowlist changes between submit and wake; the same event is accepted, then refused | 🟡 **enforcement built 2026-10-13** — `ER_ALLOWED_SUBMITTERS` on EventRunner, checked after the signature so `ce_submitter` is an attribute a signature covers; 9 tests. What is missing is a demo *stage* that performs the edit on camera |
+| **R3** | Inject an event into the Kafka **requests** topic; EventRunner refuses it | 🟡 **stage built 2026-10-13** — `assert_forged_request_refused` + `FORGE_REQUEST_SRC`, 8 tests. Like the rest of the signed path, **not yet run against a cluster** |
 | **R4** | A utility listing events in a topic, showing which are signed and chaining results back to their signed wake | ✅ **built** — `scripts/audit_topic.py` + `shared/audit.py`. Five verdicts, so a frame unsigned *by policy* is not reported as a finding; seven chain states, so `bound=False` cannot mean four different things. Runs in-cluster by default, against the deployment's own keyset. Like the rest of the signed path, **not yet run against a cluster** |
 | **R5** | KEDA scales from zero on task events and back to zero when idle | ✅ measured on two clusters |
 
