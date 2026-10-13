@@ -14,6 +14,7 @@ it — and the demo would appear to pass while proving nothing about the signatu
 from __future__ import annotations
 
 import binascii
+import json
 import sys
 
 import k8s_demo_flow as flow
@@ -180,3 +181,143 @@ def test_the_collision_case_is_still_reachable_on_purpose():
     default, and with the assertion pointed at the surviving genuine row instead."""
     assert _flow("kind-signed").args.forge_collide is False
     assert _flow("kind-signed", "--forge-collide").args.forge_collide is True
+
+
+# ---- the forged REQUEST: the same attack in the other direction --------------
+#
+# Different topic, different direction, different refusing function. The response
+# forgery above forges an ANSWER to real work; this forges the WORK ITSELF, which is
+# what the abstract's "the broker hands off events before signature check" names.
+
+def _run_forge_request(topic="kev1-requests", corr="forged-0001",
+                       bootstrap="broker:9092"):
+    """Execute FORGE_REQUEST_SRC with a fake KafkaProducer. Same approach as
+    `_run_forge`: run the attacker's program rather than parse it, because what is
+    under test is that the bytes it produces are refused."""
+    sent: list[tuple] = []
+
+    class _Producer:
+        def __init__(self, **_kw):
+            pass
+
+        def send(self, topic, *, key, value, headers):
+            sent.append((topic, key, value, headers))
+
+        def flush(self, timeout=None):
+            pass
+
+    src = flow.FORGE_REQUEST_SRC % {"topic": topic, "corr": corr,
+                                    "bootstrap": bootstrap}
+    fake_kafka = type(sys)("kafka")
+    fake_kafka.KafkaProducer = _Producer
+    saved = sys.modules.get("kafka")
+    sys.modules["kafka"] = fake_kafka
+    try:
+        exec(compile(src, "<forge-request>", "exec"), {"__name__": "__forge__"})
+    finally:
+        if saved is not None:
+            sys.modules["kafka"] = saved
+        else:
+            sys.modules.pop("kafka", None)
+    return sent
+
+
+def test_the_forged_request_lands_on_the_requests_topic():
+    """The whole point of the beat is the topic. On the responses topic this would be
+    the other forgery, refused by a different function."""
+    sent = _run_forge_request()
+    assert len(sent) == 1
+    topic, key, _value, _headers = sent[0]
+    assert topic == "kev1-requests"
+    # Keyed by correlation id, as `publish_request` does — per-correlation FIFO is the
+    # Phase 0 wire contract and an attacker wanting to be processed would honour it.
+    assert key == b"forged-0001"
+
+
+def test_the_forged_request_decodes_as_a_well_formed_request():
+    """If it did not, `from_kafka_binary` would fail before any signature check and the
+    demo would be refusing a malformed message rather than an unsigned one — proving
+    nothing about the control."""
+    _topic, _key, value, headers = _run_forge_request()[0]
+    evt = ce.from_kafka_binary([(k, v) for k, v in headers], value)
+    assert evt.get("specversion") == "1.0"
+    assert evt.get("type") == ce.TYPE_REQUEST
+    assert evt.get("source") == "rossoctl://attacker/forge"
+    assert evt.get("correlationid") == "forged-0001"
+    # The runner derives the session from the correlation id, so a forgery that got this
+    # wrong would be refused by the router rather than by the signature check.
+    assert evt.get("sessionuuid") == ce.session_uuid("forged-0001")
+    assert not evt.get("signature"), "an attacker has no approved key to sign with"
+
+
+def test_the_forged_request_is_refused_by_the_real_verify_function():
+    """`verify_request` is what `consume.py` calls under ER_REQUIRE_SIGNATURE=true, so
+    these exact bytes are what the runner refuses. Calling the real function rather than
+    restating its rule is §8.6's first rule — a reimplementation of the guard proves
+    nothing about the guard."""
+    ks = keyset.KeySet({"eb-01": S.public_key(SEED_EB),
+                        "runner-01": S.public_key(SEED_R1)})
+    _topic, _key, value, headers = _run_forge_request()[0]
+    evt = ce.from_kafka_binary([(k, v) for k, v in headers], value)
+    ok, why = S.verify_request(evt, _RequireCfg(), ks)
+    assert not ok, f"the forged request must be refused, got accept with {why!r}"
+
+
+def test_a_GENUINELY_signed_request_is_accepted_by_the_same_function():
+    """The positive control, and it is not optional.
+
+    §8 observation 3: the first attempt at the group-forgery test reported no issue
+    because it used the wrong event-type constants — a negative result from a harness
+    that has never produced a positive is worth very little. So prove the harness can
+    say yes: the same bytes, signed by an approved key, are accepted. Without this,
+    `verify_request` returning False above could mean the keyset is empty, the codec
+    changed, or the event is malformed, and the test would still pass.
+    """
+    ks = keyset.KeySet({"eb-01": S.public_key(SEED_EB),
+                        "runner-01": S.public_key(SEED_R1)})
+    _topic, _key, value, headers = _run_forge_request()[0]
+    evt = ce.from_kafka_binary([(k, v) for k, v in headers], value)
+    S.sign_into(evt, SEED_EB, "eb-01")
+    ok, why = S.verify_request(evt, _RequireCfg(), ks)
+    assert ok, f"a request signed by an approved key must be accepted, got {why!r}"
+
+
+def test_signing_the_forged_request_with_an_unapproved_key_does_not_help():
+    """The keyset is an allowlist, not a "was it signed at all" check. An attacker can
+    always sign with a key they generated; what they cannot do is get its `kid` into the
+    operator's approved set."""
+    ks = keyset.KeySet({"eb-01": S.public_key(SEED_EB)})
+    _topic, _key, value, headers = _run_forge_request()[0]
+    evt = ce.from_kafka_binary([(k, v) for k, v in headers], value)
+    S.sign_into(evt, SEED_R1, "attacker-01")
+    ok, why = S.verify_request(evt, _RequireCfg(), ks)
+    assert not ok
+    assert "not in the approved key set" in why
+
+
+def test_the_signature_binds_the_PROMPT_not_just_the_envelope():
+    """A signature over attributes alone would let an attacker keep a genuine signed
+    envelope and swap the prompt — i.e. make an approved submitter appear to have asked
+    for something they never asked for. `datadigest` is what closes that, so assert it
+    rather than trusting the docstring: re-encode a signed event with a different body,
+    as an attacker on the wire would."""
+    ks = keyset.KeySet({"eb-01": S.public_key(SEED_EB)})
+    _topic, _key, value, headers = _run_forge_request()[0]
+    evt = ce.from_kafka_binary([(k, v) for k, v in headers], value)
+    S.sign_into(evt, SEED_EB, "eb-01")
+    signed_headers, _ = ce.to_kafka_binary(evt)
+    tampered = ce.from_kafka_binary(
+        [(k, v) for k, v in signed_headers],
+        json.dumps({"prompt": "something else entirely",
+                    "model": None, "max_turns": 1}).encode())
+    ok, why = S.verify_request(tampered, _RequireCfg(), ks)
+    assert not ok, "a swapped payload under a genuine signature must be refused"
+    assert "does not verify" in why
+
+
+class _RequireCfg:
+    """The attributes `verify_request` reads. A real `eventrunner.config.Cfg` would do,
+    but importing it here would couple this test to unrelated config defaults."""
+    require_signature = True
+    verify_key_path = ""
+    verify_keyset_path = "/etc/ce-keyset/agents.json"
