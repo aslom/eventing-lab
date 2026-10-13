@@ -1,0 +1,23 @@
+# Code owners for <PROJECT>.
+#
+# CODEOWNERS is NOT inherited from the org — GitHub requires it per-repo, so this file must
+# name a real team or the repo gets no review assignment at all.
+#
+# Replace <TEAM> with the owning team (e.g. @rossoctl/<PROJECT>-maintainers) and make sure the
+# team has write access to this repo, or GitHub silently ignores these rules.
+
+# Default owners for everything
+* @rossoctl/<TEAM>
+
+# The documentation convention and its gates. Changes here affect every contributor's
+# workflow, so they get maintainer review.
+/docs/README.md       @rossoctl/<TEAM>
+/docs/specs/README.md @rossoctl/<TEAM>
+/docs/adrs/           @rossoctl/<TEAM>
+/CLAUDE.md            @rossoctl/<TEAM>
+
+# CI and governance
+/.github/             @rossoctl/<TEAM>
+/scripts/             @rossoctl/<TEAM>
+/LICENSE              @rossoctl/<TEAM>
+/GOVERNANCE.md        @rossoctl/<TEAM>

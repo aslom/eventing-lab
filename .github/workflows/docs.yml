@@ -1,0 +1,39 @@
+name: docs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The gitignore rule for docs/plans/ is advisory; this makes it enforced.
+      - name: No committed plans
+        run: ./scripts/check-no-committed-plans.sh
+
+      # The headers are what make the convention legible. See docs/README.md.
+      - name: Doc headers
+        run: ./scripts/check-doc-headers.sh
+
+      - name: Markdown lint
+        uses: DavidAnson/markdownlint-cli2-action@v19
+        with:
+          globs: |
+            **/*.md
+            !.github/**
+
+      # The convention is dense with relative cross-links (specs <-> adrs <-> reports <->
+      # demos). A rename breaks them silently, so check them on every PR. Offline: we are
+      # verifying our own links resolve, not that the internet is up.
+      - name: Link check
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --offline --no-progress --config .lychee.toml '**/*.md'
+          fail: true

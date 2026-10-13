@@ -1,0 +1,40 @@
+# Pre-commit hooks for a rossoctl repo.
+#
+# This is the docs-and-governance baseline from rossoctl/repo-template. Add your language's
+# hooks (ruff, golangci-lint, prettier, …) to the end as the repo grows — the org config in
+# rossoctl/rossoctl is the reference for what those look like.
+repos:
+  # The docs/ convention's own gates, same scripts CI runs.
+  - repo: local
+    hooks:
+      - id: no-committed-plans
+        name: No committed files under docs/plans/
+        entry: scripts/check-no-committed-plans.sh
+        language: script
+        pass_filenames: false
+
+      - id: doc-headers
+        name: Required headers in specs/adrs/reports
+        entry: scripts/check-doc-headers.sh
+        language: script
+        pass_filenames: false
+
+  # Rewrite AI Co-Authored-By trailers to Assisted-By (org convention).
+  - repo: local
+    hooks:
+      - id: ai-assisted-by-trailer
+        name: Replace Co-Authored-By with Assisted-By
+        entry: scripts/hooks/commit-msg
+        language: script
+        stages: [commit-msg]
+
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.18.1
+    hooks:
+      - id: markdownlint-cli2
+
+  # Secret detection - runs locally (the CI action requires a license for org repos).
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
