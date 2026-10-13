@@ -17,7 +17,7 @@ signature that can no longer be checked against anything. The original is theref
 preserved under `data["rejected"]` — attrs, payload, claimed source and signature — so
 an incident can be verified offline rather than merely logged.
 
-**Stored is not the same as acted on (#885).** Marking a refused event was originally the
+**Stored is not the same as acted on (examples#885).** Marking a refused event was originally the
 whole of enforcement, and it was not enough: the rewrite preserves `final` and `groupid`
 so the record stays readable, which meant a rejected event went on finishing its member,
 settling its batch, and overwriting the verified row at its sequence. With enforcement
@@ -109,7 +109,7 @@ class Consumer(threading.Thread):
     @property
     def rejected_not_stored(self) -> int:
         """Rejected responses refused even the `phase=error` row, because a verified
-        row already held their (correlationid, sequence). #885 item 3.
+        row already held their (correlationid, sequence). examples#885 item 3.
 
         Separate from `rejected` because it is a different operational fact: the event
         was refused AND it collided with a genuine answer, which is what an attempt to
@@ -216,7 +216,7 @@ class Consumer(threading.Thread):
                     # but no `correlationid`, so handing it to insert_response would
                     # violate that table's (correlationid, sequence) primary key.
                     if ce.is_group_event(evt):
-                        # #885 — `ok`, not `verified`. Those are different questions:
+                        # examples#885 — `ok`, not `verified`. Those are different questions:
                         # `verified` is False only for a check that FAILED, which audit
                         # mode accepts on purpose, while `not ok` is the
                         # enforcement-refused population and the only one to skip. See
@@ -238,7 +238,7 @@ class Consumer(threading.Thread):
                         target = (self._stores.for_event(evt) if self._stores
                                   else self._store)
                         if not target.insert_response(d):
-                            # #885 item 3 — the row at this sequence was NOT a rejection,
+                            # examples#885 item 3 — the row at this sequence was NOT a rejection,
                             # so a rejected frame was refused the overwrite. Counted and
                             # logged rather than dropped silently: §4.4's rule is that a
                             # drop is indistinguishable from an agent that never

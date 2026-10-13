@@ -1,6 +1,6 @@
 """Handler → Producer → **topic string**, with a fake Kafka. docs/specs/0004-phase3-tenancy-agents-triggers.md §3.1, §6.1.
 
-The #883 review identified this as the suite's structural blind spot, and it was right:
+The examples#883 review identified this as the suite's structural blind spot, and it was right:
 `create_group` shipping without a `userkey` and `/continue` 500-ing on an unowned
 correlation both survived 217 new test functions, because every multi-mode test either
 called `GroupService` directly with the argument the handler fails to pass, or replaced

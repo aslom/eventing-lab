@@ -55,7 +55,7 @@ def test_upsert_session_increments_turns(tmp_path: pathlib.Path):
     assert session and session["turns"] == 2
 
 
-# ---- the asymmetric conflict rule (#885 item 3) -----------------------------
+# ---- the asymmetric conflict rule (examples#885 item 3) -----------------------------
 
 def _row(corr, seq, text, *, rejected=False, phase="result"):
     e = {"correlationid": corr, "sequence": seq, "phase": phase, "id": f"id-{seq}",
@@ -83,7 +83,7 @@ def test_a_duplicate_delivery_still_collapses_onto_one_row(tmp_path: pathlib.Pat
 
 
 def test_a_rejected_row_never_replaces_one_that_was_not_rejected(tmp_path: pathlib.Path):
-    """#885 item 3 at the store boundary, with no Kafka in the picture."""
+    """examples#885 item 3 at the store boundary, with no Kafka in the picture."""
     s = Store(tmp_path)
     corr = "test-otter-0011"
     s.insert_response(_row(corr, 1, "2+2 is 4"))

@@ -12,7 +12,7 @@ Stages 2c and 3 are the point. Without them the demo works on the day it is buil
 and fails a week later, which is the worst possible failure mode for something
 whose entire purpose is sitting idle at zero.
 
-On `--overlay kind-signed` two more run (#896), which are the talk's D2 beat and the
+On `--overlay kind-signed` two more run (eventing-lab#2), which are the talk's D2 beat and the
 one the abstract cannot back without them:
 
     signed wake        the terminal response carried a signature that VERIFIED, on a
@@ -60,7 +60,7 @@ from proclib import Checks  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from shared import signing  # noqa: E402
 
-# The forgery, run inside a throwaway pod from the eventrunner image (#896). Kept as a
+# The forgery, run inside a throwaway pod from the eventrunner image (eventing-lab#2). Kept as a
 # module constant rather than inline so it reads as the attacker's program it is.
 #
 # It imports the REAL `shared.ce`, so the events are byte-identical in shape to a
@@ -81,7 +81,7 @@ p = KafkaProducer(bootstrap_servers=%(bootstrap)r, acks="all", retries=3)
 #
 #    **The sequence is chosen NOT to collide**, which is the opposite of what an
 #    attacker would do and is deliberate. `next_seq` starts at 1, so a forgery at
-#    `sequence=1` always lands on a sequence the genuine run already holds — and #955's
+#    `sequence=1` always lands on a sequence the genuine run already holds — and examples#955's
 #    store rule then refuses the rejected row rather than storing it. That is the
 #    STRONGER outcome, but it leaves no row carrying `data.signature_rejected`, so the
 #    "the refusal is on record" half of the beat finds nothing and fails for a reason
@@ -151,7 +151,7 @@ class Flow:
         # contains the expected text — so stage 2's `expect_contains(text, "OK")` could
         # pass by accident while proving nothing.
         self.mock = args.overlay != "demo"
-        # #896 — default on for the overlay that enforces signatures, since that is the
+        # eventing-lab#2 — default on for the overlay that enforces signatures, since that is the
         # only reason `kind-signed` exists. Explicit flags win, so the beats can also be
         # driven against any other enforcing deployment.
         self.signed_beats = (args.signed_beats if args.signed_beats is not None
@@ -564,7 +564,7 @@ class Flow:
             return self.c.fail(f"POST /continue for {corr}", str(e))
         return self.c.expect(status == 202, f"POST /continue for {corr} -> {status}")
 
-    # ---- the signed path (#896) --------------------------------------------
+    # ---- the signed path (eventing-lab#2) --------------------------------------------
     def assert_signed_wake(self) -> None:
         """D2: the terminal response that ended a run carried a signature that verified.
 
@@ -662,10 +662,10 @@ class Flow:
         model actually describes (§3.3: the broker is plaintext and anything with
         network access can write to it).
 
-        Asserts the OUTCOME, per §8.5.1 and #885: not that a verdict was computed, but
+        Asserts the OUTCOME, per §8.5.1 and examples#885: not that a verdict was computed, but
         that the batch did not settle and the genuine answer survived.
         """
-        self.c.section("forged event refused — enforcement acts (#885)")
+        self.c.section("forged event refused — enforcement acts (examples#885)")
         # A batch of 2 with only ONE prompt submitted, so the group stays OPEN: a forged
         # `group.completed` has something to end prematurely, which is the whole point.
         try:
@@ -718,12 +718,12 @@ class Flow:
         rejected = [r for r in rows
                     if (r.get("data") or {}).get("signature_rejected")]
         if self.args.forge_collide:
-            # The forgery reused a sequence the genuine run holds, so #955's store rule
+            # The forgery reused a sequence the genuine run holds, so examples#955's store rule
             # refused it the row entirely. Nothing to find — and that is the stronger
             # outcome, so assert THAT rather than the forensic row.
             self.c.expect(not rejected,
                           "a forgery reusing a verified row's sequence is refused the "
-                          "row outright (#955) — no rejection is stored because none "
+                          "row outright (examples#955) — no rejection is stored because none "
                           "could be written without destroying the genuine answer")
             self.c.log("  (--forge-collide: the audit evidence is the surviving "
                        "genuine row, not a rejection row)")
@@ -1029,13 +1029,13 @@ def build_args(argv=None):
                     help="skip T5.6, which deletes the consumer group's offsets")
     ap.add_argument("--signed-beats", dest="signed_beats", action="store_true",
                     default=None,
-                    help="#896: assert the signed wake (D2) and that a forged event is "
+                    help="eventing-lab#2: assert the signed wake (D2) and that a forged event is "
                          "refused. Default on for --overlay kind-signed")
     ap.add_argument("--no-signed-beats", dest="signed_beats", action="store_false",
                     help="skip the signed beats even on an enforcing overlay")
     ap.add_argument("--forge-collide", action="store_true",
                     help="publish the forged terminal at sequence 1, colliding with the "
-                         "genuine run's first event. #955's store rule then refuses it "
+                         "genuine run's first event. examples#955's store rule then refuses it "
                          "the row outright, so the evidence is the surviving genuine "
                          "answer rather than a stored rejection")
     ap.add_argument("--skip", default="")
@@ -1063,7 +1063,7 @@ def main(argv=None) -> int:
     f.stage2()
     f.stage2b()
     f.stage3()
-    # #896 — the signed beats, on by default for `kind-signed` because that overlay
+    # eventing-lab#2 — the signed beats, on by default for `kind-signed` because that overlay
     # exists for nothing else. `--signed-beats`/`--no-signed-beats` overrides either way,
     # so the forgery can be demonstrated on any enforcing deployment.
     if f.signed_beats:

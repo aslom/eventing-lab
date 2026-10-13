@@ -68,7 +68,7 @@ class GroupMirror(threading.Thread):
         # to, both for settling and for back-filling a missing `userkey`. `None` keeps
         # the single-tenant behaviour, where there is one store and nothing to resolve.
         self._owners = owners
-        # #885 — the mirror is a SECOND, independent acting path. A forged
+        # examples#885 — the mirror is a SECOND, independent acting path. A forged
         # `group.completed` refused by the live consumer sits on the topic and was then
         # applied unconditionally on the very next restart, so a guard in `kafka_in`
         # alone closed the hole only until the pod bounced.
@@ -85,7 +85,7 @@ class GroupMirror(threading.Thread):
         # `group.started` creates an empty group row, which is noise rather than a
         # settled batch reporting work that never ran.
         #
-        # **Member terminals are handled differently, by precedence (#956).** They used
+        # **Member terminals are handled differently, by precedence (examples#956).** They used
         # to replay unverified, so a forged terminal lying earlier in the topic than the
         # genuine answer won `finished_utc IS NULL` on every start and the batch read
         # back `failed: 1` for an agent that succeeded — worst exactly here, since with a
@@ -109,7 +109,7 @@ class GroupMirror(threading.Thread):
         self.total_to_read = 0
         self.rebuilt_groups = 0
         self.rebuilt_members = 0
-        # #885 — group.completed events skipped on replay because they could not be
+        # examples#885 — group.completed events skipped on replay because they could not be
         # attributed to the bridge's own key.
         self.refused = 0
         self.settled = 0
@@ -255,7 +255,7 @@ class GroupMirror(threading.Thread):
                 d[ce.EXT_USERKEY] = owner
         try:
             if ce.is_group_event(evt):
-                # #885 — only the completion, and only when configured. See __init__.
+                # examples#885 — only the completion, and only when configured. See __init__.
                 if (self._keyset is not None and self._bridge_kid
                         and d.get("type") == ce.TYPE_GROUP_COMPLETED):
                     try:
@@ -274,7 +274,7 @@ class GroupMirror(threading.Thread):
                 self._groups.on_group_event(d, replay=True)
                 self.rebuilt_groups += 1
             else:
-                # #956 — a member terminal that VERIFIES outranks an unverified one
+                # examples#956 — a member terminal that VERIFIES outranks an unverified one
                 # already recorded, whatever order the topic holds them in. Precedence
                 # rather than refusal: a forged unsigned terminal and a genuine
                 # pre-signing one are byte-identical, so refusing on replay would refuse

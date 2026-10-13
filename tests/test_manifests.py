@@ -20,7 +20,7 @@ import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 K8S = ROOT / "k8s"
-# `kind-signed` (#884) is included deliberately: it was absent when that PR added the
+# `kind-signed` (examples#884) is included deliberately: it was absent when that PR added the
 # overlay, so every assertion in this file silently skipped the one overlay that turns
 # signing on — including the seed-path rule the PR exists to respect.
 OVERLAYS = {"test": K8S / "overlays" / "test",
@@ -176,11 +176,11 @@ SECRET_VALUE_VARS = (
     "EB_WEBHOOK_SECRETS_PATH",
 )
 
-#: The signing seed paths, from #884. Same §5 rule, different obligation — and the
+#: The signing seed paths, from examples#884. Same §5 rule, different obligation — and the
 #: distinction is the one that PR had to settle: these hold a **mount point**, not key
 #: material, so a literal value is correct. What they must not do is come from the
 #: committed ConfigMap: `configmap.yaml` says seed paths "name Secret mounts and belong
-#: in the Deployment beside the volume", and #884 moved them to a container `env` entry
+#: in the Deployment beside the volume", and examples#884 moved them to a container `env` entry
 #: for exactly that reason after an earlier revision put them in `eventing-config` and
 #: quoted the rule immediately before breaking it.
 SEED_PATH_VARS = (
@@ -222,7 +222,7 @@ def test_no_phase3_secret_is_inlined_into_a_manifest():
     """The §8.3 rule, checked where it would actually leak: rendered output.
 
     **A path naming a secret is not a secret.** `*_SIGNING_KEY_PATH` holds
-    `/etc/ce-signing/seed.hex` — a mount point, not key material — and #884 deliberately
+    `/etc/ce-signing/seed.hex` — a mount point, not key material — and examples#884 deliberately
     sets it as a container `env` entry so it sits *beside the volume that supplies the
     seed*, which is what `configmap.yaml` asks for. So a literal value is correct for
     those, and the rule they must obey is a different one: the **seed itself** must never
@@ -251,7 +251,7 @@ def test_no_phase3_secret_is_inlined_into_a_manifest():
             assert f"{var}:" not in rendered, \
                 (f"{overlay} sets {var} as a ConfigMap key; `configmap.yaml` says seed "
                  f"paths name Secret mounts and belong in the Deployment beside the "
-                 f"volume (see #884)")
+                 f"volume (see examples#884)")
     # And no seed material, by any route, in any overlay.
     for overlay in OVERLAYS:
         rendered = render(overlay)

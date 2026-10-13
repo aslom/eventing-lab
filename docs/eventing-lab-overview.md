@@ -278,7 +278,7 @@ could flip it is "a way to get per-user isolation half-enabled by accident".
 checked against the RFC's own test vectors and the canonicalisation is
 injective, but the signed path has never run end to end on a cluster, and
 enforcement is currently advisory — `EB_REQUIRE_RESPONSE_SIGNATURE` defaults to
-`false`, and [#885](https://github.com/rossoctl/examples/issues/885) means a
+`false`, and [examples#885](https://github.com/rossoctl/examples/issues/885) means a
 rejected response can still end a batch even when it is `true`.
 
 ## 5. The KubeCon NA 2026 commitment
@@ -330,8 +330,8 @@ service making control claims.
 **Where the risk actually is.** Not in any single open bug, but in the pattern
 Phase 2 §8.4 names: **the documentation is more rigorous than the code**, and a
 suite of 904 tests did not catch
-[#885](https://github.com/rossoctl/examples/issues/885) or
-[#888](https://github.com/rossoctl/examples/issues/888). Half-configured states
+[examples#885](https://github.com/rossoctl/examples/issues/885) or
+[examples#888](https://github.com/rossoctl/examples/issues/888). Half-configured states
 are where this system fails, and the two services fail in *opposite* directions.
 Phases 3 and 4 add controls of exactly the same shape, so the five questions need
 to be a gate on new work rather than a retrospective on old work.

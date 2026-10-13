@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS responses (
   data_json     TEXT NOT NULL,
   final         INTEGER NOT NULL DEFAULT 0,
   raw_json      TEXT NOT NULL,
-  -- #885 — this row is a refused event kept for review, not an answer. The flag is
+  -- examples#885 — this row is a refused event kept for review, not an answer. The flag is
   -- `rejected` rather than `verified` on purpose: 0 is the truthful default for every
   -- row written before this column existed and for every row written with verification
   -- off. A `verified` column would default to "unverified" and anything keying on it
@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS group_members (
   first_event_utc TEXT,
   finished_utc    TEXT,
   terminal_phase  TEXT,             -- result | error
-  -- #956 — was the terminal that set `status` carried by a VERIFIED event? Defaults to
+  -- examples#956 — was the terminal that set `status` carried by a VERIFIED event? Defaults to
   -- 0, which is truthful for every row written before this column and for every
   -- unsigned deployment: nothing has been proved about them. Only ever moves 0 -> 1
   -- (`upgrade_member_terminal`), so it cannot be used to downgrade a genuine answer.
@@ -141,7 +141,7 @@ class Store:
         """Store one response event. Returns False only when a rejected event was
         refused because a row that is NOT a rejection already holds its sequence.
 
-        **The conflict rule is deliberately asymmetric** (#885 item 3).
+        **The conflict rule is deliberately asymmetric** (examples#885 item 3).
 
         A genuine event keeps `INSERT OR REPLACE`, because that is load-bearing: RQ-1
         accepts at-least-once delivery, so a redelivered frame must collapse onto one
@@ -210,7 +210,7 @@ class Store:
         # A rejected terminal still carries final=1, so this reports "answered" for a
         # correlation whose only terminal event was refused. Presentational rather than
         # state-advancing — it feeds the `"final"` field on two read endpoints and
-        # advances nothing — so it was left out of #885's scope deliberately rather
+        # advances nothing — so it was left out of examples#885's scope deliberately rather
         # than overlooked.
         #
         # VERIFY: once the follow-up lands, add `AND rejected=0` here and drop this
@@ -392,7 +392,7 @@ class Store:
         second final event, and this must not count twice.
 
         `verified` records whether the terminal that set this row carried a signature
-        that checked out, so a later replay cannot regress it (#956,
+        that checked out, so a later replay cannot regress it (examples#956,
         `upgrade_member_terminal`). It defaults to False because most callers have no
         verdict to offer — an unsigned deployment, or the mirror replaying history —
         and "nothing has been proved about this row" is the truthful default.
@@ -409,7 +409,7 @@ class Store:
 
     def upgrade_member_terminal(self, groupid: str, correlationid: str,
                                 terminal_phase: str) -> bool:
-        """Let a VERIFIED terminal outrank an unverified one already recorded. #956.
+        """Let a VERIFIED terminal outrank an unverified one already recorded. examples#956.
 
         The replay counterpart to `mark_member_finished`, and the reason it has to
         exist: the group mirror reads the topic rather than the store, so the

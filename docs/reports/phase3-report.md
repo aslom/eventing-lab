@@ -5,7 +5,7 @@ Spec: [`../specs/0004-phase3-tenancy-agents-triggers.md`](../specs/0004-phase3-t
 Covers: §9 rollout steps 1-4, plus T5, T13 and T22
 
 Status: **in progress.** This report covers what landed on
-`feat/eventing-phase3-tenancy-foundation` (PR #883): §9's rollout steps 1–4, plus T5, T13
+`feat/eventing-phase3-tenancy-foundation` (PR examples#883): §9's rollout steps 1–4, plus T5, T13
 and T22. It will be extended as later steps land rather than rewritten.
 
 Written to the same contract as `../reports/phase1-report.md`: measured figures rather than
@@ -155,7 +155,7 @@ the code before being fixed; the commit is named so the diff is reviewable along
 
 ### 4.1 The `single`-mode regression that shipped behind a claim it could not happen
 
-**Found by:** review (#883). **Fixed in:** `6ebdd80`.
+**Found by:** review (examples#883). **Fixed in:** `6ebdd80`.
 
 Dropping Phase 2's `Minter` seeding loop left nothing to populate its replacement. On the
 first start after an upgrade, `owners.sqlite` is new and empty while `sessions.sqlite`
@@ -254,7 +254,7 @@ authoritative over a signed assertion.
 
 ### 4.5 A `userkey` reached a filesystem path join unvalidated
 
-**Found by:** review (#883). **Fixed in:** `6ebdd80`.
+**Found by:** review (examples#883). **Fixed in:** `6ebdd80`.
 
 In multi mode the key arrives from an inbound Kafka header, and `Store.__init__` calls
 `mkdir(parents=True)` — so it is created, not rejected:
@@ -286,7 +286,7 @@ silently.
 
 ### 4.6 The suite's structural blind spot
 
-**Found by:** review (#883). **Fixed in:** `3278d75`.
+**Found by:** review (examples#883). **Fixed in:** `3278d75`.
 
 Two of the defects above survived 200-odd new test functions, for one reason: every multi-mode
 test either called `GroupService` directly **with** the `userkey` the handler fails to

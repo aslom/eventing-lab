@@ -1252,7 +1252,7 @@ def test_a_broker_that_is_down_does_not_block_startup(svc, monkeypatch):
     mod.GroupMirror("broker:9092", "responses", fresh).run()   # must not raise
 
 
-# ---- a rejected event is evidence, not a fact (#885) ------------------------
+# ---- a rejected event is evidence, not a fact (examples#885) ------------------------
 #
 # The guard these pin keys on `ce.KEY_REJECTED` and nothing else. The first test is the
 # reason: `phase="error"` is a value genuine agent failures carry, so a guard written the
@@ -1260,7 +1260,7 @@ def test_a_broker_that_is_down_does_not_block_startup(svc, monkeypatch):
 # of the forgeries. It is written first and it passes both before and after the fix.
 
 def test_a_genuine_error_phase_terminal_still_fails_its_member(svc):
-    """The false positive the #885 guard must not have.
+    """The false positive the examples#885 guard must not have.
 
     `eventrunner/runner.py` emits `phase="error", final=True` when an agent exits
     non-zero or dies without a result frame, and `mark_member_finished` maps that to
@@ -1314,7 +1314,7 @@ def test_a_rejected_member_event_does_not_finish_a_member(svc):
 
 
 def test_the_genuine_answer_still_completes_the_batch_after_a_rejected_one(svc):
-    """The harm in #885's item 1, end to end: the real answer must survive.
+    """The harm in examples#885's item 1, end to end: the real answer must survive.
 
     Reproduced in the issue as `0 finished, 1 failed` followed by `duplicate terminal
     event ignored` — the batch reporting a failure that did not occur while the genuine
@@ -1342,7 +1342,7 @@ def test_the_genuine_answer_still_completes_the_batch_after_a_rejected_one(svc):
 
 
 def test_a_rejected_group_completed_event_does_not_settle_a_group(svc):
-    """#885 item 2: `on_group_event` reads only `type` and `groupid`, both of which the
+    """examples#885 item 2: `on_group_event` reads only `type` and `groupid`, both of which the
     rejection rewrite deliberately preserves so the forensic record stays readable."""
     s, store, _producer, _ = svc
     gid, _ = s.create(label="open", expected=2)
@@ -1365,7 +1365,7 @@ def test_a_rejected_group_started_event_does_not_create_a_group(svc):
         "a rejected started event must not create a group"
 
 
-# ---- the mirror is a second acting path (#885) -------------------------------
+# ---- the mirror is a second acting path (examples#885) -------------------------------
 #
 # A forged `group.completed` refused by the live consumer stays on the topic, and the
 # mirror replays the topic on every start. So the consumer-side guard closed the hole
@@ -1400,7 +1400,7 @@ def _restarted(cfg, name):
 
 def test_the_mirror_refuses_a_group_completed_it_cannot_attribute_to_the_bridge(
         svc, monkeypatch):
-    """#885 item 2's second half. runner-01 is approved — it is just not the bridge,
+    """examples#885 item 2's second half. runner-01 is approved — it is just not the bridge,
     and `EB_SIGNING_KID` is documented as the only kid accepted on group lifecycle
     events. Without this the forgery is refused live and applied on the next restart.
     """
@@ -1474,9 +1474,9 @@ def test_the_mirror_verifies_nothing_when_no_keyset_is_configured(svc, monkeypat
         "with verification off, replay is unchanged"
 
 
-# ---- a verified terminal outranks an unverified one on replay (#956) --------
+# ---- a verified terminal outranks an unverified one on replay (examples#956) --------
 #
-# The residual of #885 the live-path guard cannot reach: the mirror reads the TOPIC, so
+# The residual of examples#885 the live-path guard cannot reach: the mirror reads the TOPIC, so
 # the rejection marker the consumer writes into SQLite is not available to it, and the
 # mirror does not rebuild response rows either — so the `rejected` column cannot answer
 # the question on an emptyDir restart. Precedence is what is left, and it is enough
@@ -1490,7 +1490,7 @@ def _replay_terminal(gid, corr, text, phase, seq, *, verified=False):
 
 
 def test_a_verified_terminal_outranks_a_forged_one_earlier_in_the_topic(svc):
-    """#956. A forged terminal lying earlier in the topic than the genuine answer won
+    """examples#956. A forged terminal lying earlier in the topic than the genuine answer won
     `finished_utc IS NULL` on every start, so the batch read back `failed: 1` for an
     agent that had succeeded — and on the test/kind overlays /data is an `emptyDir`, so
     that replay IS the state rather than a transient.
@@ -1557,7 +1557,7 @@ def test_a_genuine_failure_still_reads_as_failed_on_replay(svc):
 
 
 def test_the_replay_verdict_cannot_arrive_from_the_wire(svc):
-    """Same invariant as #885's marker, for the same reason: a verdict this process
+    """Same invariant as examples#885's marker, for the same reason: a verdict this process
     computed must not be something a publisher can assert."""
     e = ce.new_event(type=ce.TYPE_RESPONSE, source="s",
                      datacontenttype="application/json", correlationid="c1",

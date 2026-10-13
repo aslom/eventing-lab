@@ -6,10 +6,11 @@ being performed live in front of an audience.
 
 ## What lives here
 
-| Demo                                     | Shows                                                                            |
-| ---------------------------------------- | -------------------------------------------------------------------------------- |
-| [`phase0-demo.md`](phase0-demo.md)       | A Kafka message wakes an agent on one laptop, and every step streams back out    |
-| [`phase1-demo.md`](phase1-demo.md)       | The same path on Kubernetes, scaling from zero agent replicas on consumer lag    |
+| Demo                                                           | Shows                                                                            |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| [`phase0-demo.md`](phase0-demo.md)                             | A Kafka message wakes an agent on one laptop, and every step streams back out    |
+| [`phase1-demo.md`](phase1-demo.md)                             | The same path on Kubernetes, scaling from zero agent replicas on consumer lag    |
+| [`kubecon-na-2026-demo.md`](kubecon-na-2026-demo.md)           | The conference run-of-show on the signed path, with every act marked doable or not |
 
 Both are runbooks you read while typing, which is why they live here rather than in
 [`../notes/`](../notes/). `phase1-demo.md` covers all four ways to run it — locally without

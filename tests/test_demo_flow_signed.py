@@ -1,4 +1,4 @@
-"""`k8s_demo_flow.py`'s overlay wiring and the forgery it publishes. #896.
+"""`k8s_demo_flow.py`'s overlay wiring and the forgery it publishes. eventing-lab#2.
 
 The stages themselves need a cluster, but three things that decide whether the demo
 proves anything do not — and one of them was silently wrong before this:
@@ -164,7 +164,7 @@ def test_the_forged_terminal_does_not_reuse_the_genuine_runs_first_sequence():
     """Found in review, before the first cluster run: a forgery at `sequence=1` always
     collides, because `Emitter.next_seq` returns 1 for a genuine run's first event.
 
-    #955's store rule then refuses the rejected row rather than storing it — the
+    examples#955's store rule then refuses the rejected row rather than storing it — the
     STRONGER outcome — but it leaves no row carrying `data.signature_rejected`, so the
     "the refusal is on record" assertion finds nothing and the beat fails for a reason
     that has nothing to do with signing. The default must therefore not collide.

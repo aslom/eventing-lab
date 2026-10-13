@@ -85,7 +85,7 @@ CE_HEADER_PREFIX = "ce_"
 CORE_ATTRS = {"specversion", "type", "source", "id", "time",
               "subject", "datacontenttype"}
 
-# #885 — set by the responses consumer on an envelope whose signature was REFUSED under
+# examples#885 — set by the responses consumer on an envelope whose signature was REFUSED under
 # enforcement. Not a CloudEvent attribute and never on the wire: it is a local verdict,
 # travelling with the one thing every acting path already receives.
 #
@@ -109,7 +109,7 @@ CORE_ATTRS = {"specversion", "type", "source", "id", "time",
 # mark every genuine answer rejected, which is a denial of service rather than a
 # bypass — the control inverted instead of removed. `test_kafka_in.py` pins the refusal.
 KEY_REJECTED = "__rejected"
-# #956 — set by the group mirror on a replayed member terminal whose signature checked
+# examples#956 — set by the group mirror on a replayed member terminal whose signature checked
 # out, so `GroupService` can let it outrank an unverified terminal already recorded. Same
 # `__` convention and the same codec refusal as KEY_REJECTED, for the same reason: it is
 # a verdict this process computed, not a claim a publisher is entitled to make. The
@@ -129,7 +129,7 @@ def is_group_event(event) -> bool:
 
 
 def is_rejected(event) -> bool:
-    """True for an envelope the responses consumer refused. #885.
+    """True for an envelope the responses consumer refused. examples#885.
 
     The one predicate every enforcement site reads, so the rule lives in one place:
     **a rejected envelope is evidence, not a fact — it is stored and it is rendered, but
@@ -178,7 +178,7 @@ def to_kafka_binary(event: CloudEvent) -> tuple[list[tuple[str, bytes]], bytes]:
     for k, v in event.attrs.items():
         if v is None or v == "":
             continue
-        # #885 — the outbound half of `from_kafka_binary`'s refusal. A `__`-prefixed name
+        # examples#885 — the outbound half of `from_kafka_binary`'s refusal. A `__`-prefixed name
         # is a local verdict (see KEY_REJECTED), so emitting one would put a decision
         # this process made onto the wire, where the next consumer cannot tell it from a
         # claim the publisher is entitled to make.
@@ -207,7 +207,7 @@ def from_kafka_binary(headers: Iterable[tuple[str, bytes | None]], value: bytes 
         if not k or not k.startswith(CE_HEADER_PREFIX):
             continue
         name = k[len(CE_HEADER_PREFIX):]
-        # #885 — refuse any `__`-prefixed name. These are local verdicts the consumer
+        # examples#885 — refuse any `__`-prefixed name. These are local verdicts the consumer
         # writes onto an envelope (see KEY_REJECTED), never wire attributes, and CloudEvents
         # v1.0 restricts attribute names to [a-z0-9] so nothing legitimate is lost.
         #
