@@ -738,6 +738,26 @@ def test_the_submitter_comparison_is_case_insensitive(tmp_path):
     assert c.rejected_submitter == 0
 
 
+def test_the_submitter_allowlist_parses_from_the_environment(monkeypatch):
+    """The config boundary the nine consumer tests above skip: they inject an
+    already-parsed tuple via `cfg_for`, so `load()`'s `.strip().lower()`, comma split
+    and `if s.strip()` filter are otherwise covered only by the manual check in the
+    PR description.
+
+    The whitespace-only case is the one that matters. A `('',)` is truthy, so
+    enforcement would turn ON, and `""` — what `consume.py` computes for an absent
+    `ce_submitter` — is a member of it. The control would invert rather than close.
+    """
+    for raw, want in (("alice, Bob ", ("alice", "bob")),   # trimmed and folded
+                       ("  ",          ()),                 # not ('',)
+                       (",,",          ()),                 # not ('', '')
+                       ("alice",       ("alice",))):
+        monkeypatch.setenv("ER_ALLOWED_SUBMITTERS", raw)
+        assert load().allowed_submitters == want, raw
+    monkeypatch.delenv("ER_ALLOWED_SUBMITTERS")
+    assert load().allowed_submitters == (), "absent means no allowlist"
+
+
 def test_the_signature_is_checked_BEFORE_the_submitter(tmp_path):
     """Ordering, pinned — and it is the control, not a preference.
 

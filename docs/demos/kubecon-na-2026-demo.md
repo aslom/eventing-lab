@@ -40,7 +40,7 @@ real broker, and therefore any on-cluster signing figure. Tracked as
 **Changed 2026-10-13.** Two beats moved off the 🔴 list:
 
 - **Act 6, the forged *request*,** is now built — `assert_forged_request_refused` plus
-  `FORGE_REQUEST_SRC` in `scripts/k8s_demo_flow.py`, with eight tests in
+  `FORGE_REQUEST_SRC` in `scripts/k8s_demo_flow.py`, with six tests in
   `tests/test_demo_flow_signed.py` that prove the forged bytes decode as a well-formed
   request and are refused by the real `verify_request`, and that a genuinely signed one is
   accepted.
@@ -284,7 +284,7 @@ the next wake enforces the new value. There is no long-lived process holding a s
 decision.
 
 **This is now a demonstrable claim, not just a nice line.** `ER_ALLOWED_SUBMITTERS` is read
-in `config.from_env` at startup and never per record, so editing it while replicas are 0
+in `config.load` at startup and never per record, so editing it while replicas are 0
 means the next wake enforces the new list. What is missing is a *stage* that performs the
 edit on camera — see §10.1.
 
@@ -318,7 +318,7 @@ a deploy-time egress allowlist *is* the "trust-scope drift" seam the abstract ca
 **problem**. Demoing the static version straight would always have required an apology.
 Say that the composition's answer today is a deploy-time allowlist, that it drifts by
 construction, and that the honest fix is scope read at wake time — which needs the SPIRE
-work in §9.
+work in §10.2.
 
 **If you do build it**, two things apply: make the failure legible (a NetworkPolicy denial is
 a connection timeout, indistinguishable on stage from slow wifi — surface the agent's own

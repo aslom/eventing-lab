@@ -313,7 +313,7 @@ class Consumer(threading.Thread):
         # report the wrong cause — an unsigned forgery claiming an approved login would
         # be counted as an allowlist miss rather than as a forgery.
         #
-        # The list is read at STARTUP (`config.from_env`), never per record — the same
+        # The list is read at STARTUP (`config.load`), never per record — the same
         # rule as the keyset. That is what makes trust-scope drift real rather than
         # contrived: edit the list while replicas are 0 and the next wake enforces the
         # new one, because no long-lived process is holding the old decision.
