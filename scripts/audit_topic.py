@@ -74,6 +74,22 @@ _STATE_NOTE = {
 }
 
 
+def _image_default(which: str) -> str | None:
+    """`imagelib`'s registry/tag default on the host, None inside the pod.
+
+    The pod has no `scripts/`, so this import cannot succeed there — and it does not
+    need to: the in-pod invocation passes `--local` and never builds an image ref.
+    Returning None keeps argparse working in both places without pinning a copy of
+    the registry name in a second file, which would be a value to keep in sync.
+    """
+    try:
+        import imagelib
+    except ModuleNotFoundError:
+        return None
+    return {"registry": imagelib.DEFAULT_REGISTRY,
+            "tag": imagelib.DEFAULT_TAG}[which]
+
+
 def read_topic(bootstrap: str, topic: str, *, limit: int, timeout_ms: int):
     """Consume a topic from the beginning. Returns [(offset, CloudEvent)].
 
@@ -288,9 +304,13 @@ def build_args(argv=None):
     ap.add_argument("--limit", type=int, default=2000)
     ap.add_argument("--timeout-ms", type=int, default=4000)
     ap.add_argument("--pod-timeout", type=float, default=240.0)
+    # argparse runs in BOTH places, so these defaults cannot come from a
+    # module-level `imagelib` import. In the pod the flags are unused (it is invoked
+    # with --local), so falling back to None there is correct rather than a guess;
+    # on the host the real defaults are read from imagelib as before.
     ap.add_argument("--registry", default=os.environ.get("REGISTRY_PREFIX",
-                                                         DEFAULT_REGISTRY))
-    ap.add_argument("--tag", default=os.environ.get("TAG", DEFAULT_TAG))
+                                                         _image_default("registry")))
+    ap.add_argument("--tag", default=os.environ.get("TAG", _image_default("tag")))
     return ap.parse_args(argv)
 
 

@@ -188,3 +188,12 @@ def test_audit_topic_ships_proclib_into_the_pod():
     src = (SCRIPTS / "audit_topic.py").read_text()
     assert "proclib.py" in src and "/tmp/proclib.py" in src, (
         "audit_in_cluster must ship proclib.py into the pod")
+
+
+def test_audit_topic_keeps_the_real_registry_defaults_on_the_host():
+    """Removing the module-level import must not change what the host sees.
+    Caught by ruff as F821 once, so it is pinned here too."""
+    import audit_topic
+    args = audit_topic.build_args([])
+    assert args.registry == DEFAULT_REGISTRY
+    assert args.tag == DEFAULT_TAG
