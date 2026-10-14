@@ -48,7 +48,7 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from imagelib import DEFAULT_REGISTRY, DEFAULT_TAG  # noqa: E402
+from imagelib import DEFAULT_REGISTRY, DEFAULT_TAG, Images  # noqa: E402
 from k8slib import Kubectl, dig  # noqa: E402
 from proclib import Checks, die  # noqa: E402
 
@@ -232,7 +232,11 @@ def audit_in_cluster(args, c: Checks) -> int:
              "{'__name__':'__main__','__file__':'/app/scripts/audit_topic.py'})"]
     name = f"audit-{int(time.time())}"
     res = k.call(["run", name, "--rm", "-i", "--restart=Never", "--quiet",
-                  "--image", f"{args.registry}/rossoctl-eventrunner:{args.tag}",
+                  # Images(), not an f-string: DEFAULT_REGISTRY already ends in "/",
+                  # so interpolating another one renders "quay.io/aslomnet//rossoctl-…"
+                  # which podman rejects as an invalid reference. `normalize_prefix`
+                  # exists for exactly this and is what Images goes through.
+                  "--image", Images(args.registry, args.tag).eventrunner,
                   "--command", "--", *inner],
                  namespace=args.namespace, timeout=args.pod_timeout)
     out = (res.out or "") + (res.err or "")

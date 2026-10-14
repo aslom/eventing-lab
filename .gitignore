@@ -19,6 +19,9 @@ docs/plans/*
 credentials.*
 secrets.*
 *kubeconfig*
+# `kind_setup.py --kubeconfig .kube/config-kind` writes here by default, and the file
+# carries client certificates. The `*kubeconfig*` glob above does NOT match it.
+.kube/
 
 # IDE
 .idea/

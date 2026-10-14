@@ -59,7 +59,7 @@ import urllib.request
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import k8s_preflight  # noqa: E402
-from imagelib import DEFAULT_REGISTRY, DEFAULT_TAG  # noqa: E402
+from imagelib import DEFAULT_REGISTRY, DEFAULT_TAG, Images  # noqa: E402
 from k8slib import Kubectl, condition_is, condition_reason, dig, wait_for  # noqa: E402
 from proclib import Checks  # noqa: E402
 
@@ -880,7 +880,7 @@ class Flow:
                    f"-> {topic} @ {bootstrap}")
         res = self.k.call(
             ["run", name, "--rm", "-i", "--restart=Never", "--quiet",
-             "--image", f"{self.args.registry}/rossoctl-eventrunner:{self.args.tag}",
+             "--image", Images(self.args.registry, self.args.tag).eventrunner,
              "--command", "--", "python", "-c", forge],
             namespace=self.ns, timeout=240)
         out = ((res.out or "") + (res.err or "")).strip()
@@ -920,7 +920,9 @@ class Flow:
         self.c.log(f"  publishing from a throwaway pod -> {topic} @ {bootstrap}")
         res = self.k.call(
             ["run", name, "--rm", "-i", "--restart=Never", "--quiet",
-             "--image", f"{self.args.registry}/rossoctl-eventrunner:{self.args.tag}",
+             # Images(), not an f-string — see audit_topic.py: the default registry
+             # prefix already carries its trailing slash.
+             "--image", Images(self.args.registry, self.args.tag).eventrunner,
              "--command", "--", "python", "-c", forge],
             namespace=self.ns, timeout=240)
         out = ((res.out or "") + (res.err or "")).strip()
