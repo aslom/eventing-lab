@@ -48,8 +48,14 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from imagelib import DEFAULT_REGISTRY, DEFAULT_TAG, Images  # noqa: E402
-from k8slib import Kubectl, dig  # noqa: E402
+# `proclib` only: this module re-executes ITSELF inside a pod on the eventrunner
+# image, and that image carries `shared/` and `eventrunner/` but NOT `scripts/`
+# (Dockerfile-eventrunner). So every scripts/-local import has to be reachable in
+# both places, and `audit_in_cluster` ships proclib.py into /tmp beside this file.
+#
+# `imagelib` and `k8slib` are imported lazily inside `audit_in_cluster` instead,
+# because only the HOST side needs them — a module-level import of either fails in
+# the pod with ModuleNotFoundError before argparse ever runs.
 from proclib import Checks, die  # noqa: E402
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
@@ -201,6 +207,10 @@ def audit_locally(args, c: Checks) -> int:
 
 def audit_in_cluster(args, c: Checks) -> int:
     """Run this same script inside a throwaway pod on the eventrunner image."""
+    # Host-only imports, deliberately not at module level — see the import block.
+    from imagelib import Images
+    from k8slib import Kubectl, dig
+
     k = Kubectl(context=args.context, namespace=args.namespace,
                 kubeconfig=args.kubeconfig)
     cfg = k.get("configmap", "eventing-config", namespace=args.namespace) or {}
@@ -214,9 +224,15 @@ def audit_in_cluster(args, c: Checks) -> int:
               "— this is a listing, not an audit (§8.5.2: state the default)")
 
     src = pathlib.Path(__file__).read_text()
+    # proclib.py rides along: the eventrunner image has no `scripts/`, so the copy
+    # of this file running in the pod cannot import it from anywhere else. Shipping
+    # the source beats adding scripts/ to the image, which would put build tooling
+    # into a runtime image for the sake of one debug command.
+    proclib_src = (pathlib.Path(__file__).resolve().parent / "proclib.py").read_text()
     inner = ["python", "-c",
              "import sys,pathlib;"
              "p=pathlib.Path('/tmp/audit_topic.py');"
+             f"pathlib.Path('/tmp/proclib.py').write_text({proclib_src!r});"
              f"p.write_text({src!r});"
              "sys.argv=['audit_topic.py','--local',"
              f"'--bootstrap',{bootstrap!r},"

@@ -121,3 +121,70 @@ def test_every_image_ref_line_in_scripts_is_a_valid_reference():
             if _DOUBLE_SLASH.search(code):
                 bad.append(f"{path.name}:{n}: {line.strip()}")
     assert not bad, "invalid image references:\n  " + "\n  ".join(bad)
+
+
+# ---- the in-pod import contract --------------------------------------------
+#
+# `audit_topic.py` re-executes ITSELF inside a pod on the eventrunner image, which
+# carries `shared/` and `eventrunner/` but NOT `scripts/` (Dockerfile-eventrunner
+# COPYs exactly those two). So any scripts/-local module it imports at module level
+# is unavailable there, and the pod dies with ModuleNotFoundError before argparse
+# runs. That is a cluster-only failure: it cannot happen on the host, where
+# `scripts/` is on sys.path.
+#
+# This was found by the first real run (eventing-lab#2) and had been latent since
+# the in-cluster path was written — the earlier double-slash bug aborted the pod
+# before the import was ever reached, hiding it.
+
+def test_audit_topic_imports_with_no_scripts_dir_on_the_path():
+    """The pod's conditions: /app (shared/) plus /tmp (this file + proclib.py),
+    and no scripts/ anywhere. A module-level `import imagelib` fails here."""
+    import subprocess
+    import sys
+    import tempfile
+
+    repo = SCRIPTS.parent
+    with tempfile.TemporaryDirectory() as tmp:
+        tmpdir = pathlib.Path(tmp)
+        # Exactly what audit_in_cluster ships into /tmp.
+        (tmpdir / "audit_topic.py").write_text((SCRIPTS / "audit_topic.py").read_text())
+        (tmpdir / "proclib.py").write_text((SCRIPTS / "proclib.py").read_text())
+        # Drop scripts/ from sys.path while KEEPING stdlib — assigning the whole
+        # list would also remove stdlib and the failure would be meaningless.
+        # repo root stands in for /app (it holds shared/).
+        prog = (
+            "import sys;"
+            f"sys.path[:] = [p for p in sys.path if 'scripts' not in p];"
+            f"sys.path.insert(0, {str(repo)!r});"
+            f"sys.path.insert(0, {str(tmpdir)!r});"
+            "import importlib.util as u;"
+            f"spec = u.spec_from_file_location('audit_topic', {str(tmpdir / 'audit_topic.py')!r});"
+            "m = u.module_from_spec(spec); spec.loader.exec_module(m);"
+            "print('IMPORT-OK')"
+        )
+        r = subprocess.run([sys.executable, "-c", prog], capture_output=True,
+                           text=True, timeout=120, cwd=tmp)
+    assert "IMPORT-OK" in r.stdout, (
+        "audit_topic.py cannot be imported under the pod's sys.path — the "
+        "in-cluster audit will die before it runs.\n"
+        f"stdout: {r.stdout}\nstderr: {r.stderr[-2000:]}")
+
+
+def test_audit_topic_does_not_import_host_only_modules_at_module_level():
+    """imagelib and k8slib are host-only; importing either at module level
+    reintroduces the pod failure above."""
+    src = (SCRIPTS / "audit_topic.py").read_text()
+    for line in src.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(("import ", "from ")) and not line[:1].isspace():
+            assert "imagelib" not in stripped and "k8slib" not in stripped, (
+                f"module-level host-only import: {stripped!r} — import it inside "
+                f"audit_in_cluster() instead")
+
+
+def test_audit_topic_ships_proclib_into_the_pod():
+    """`proclib` IS needed in the pod (audit_locally uses Checks/die), so it must
+    be written alongside the script rather than imported from scripts/."""
+    src = (SCRIPTS / "audit_topic.py").read_text()
+    assert "proclib.py" in src and "/tmp/proclib.py" in src, (
+        "audit_in_cluster must ship proclib.py into the pod")
