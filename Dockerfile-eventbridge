@@ -68,6 +68,25 @@ RUN uv pip install --python "${VIRTUAL_ENV}/bin/python" -r pyproject.toml
 COPY shared/ ./shared/
 COPY eventbridge/ ./eventbridge/
 
+# `eventrunner/` too, for ONE module: `eventbridge/handlers.py` imports
+# `eventrunner.agentspec` at module level (and `eventbridge/registry.py` lazily), so
+# without this the image cannot start at all —
+#
+#     File "/app/eventbridge/handlers.py", line 18, in <module>
+#       from eventrunner import agentspec
+#     ModuleNotFoundError: No module named 'eventrunner'
+#
+# The import arrived with the declarative-agents work (examples#883, 2026-10-05) and this
+# COPY did not follow it. Caught only on a cluster: nothing in `tests/` exercises the
+# packaged layout, and a laptop run has the whole repo on sys.path, so both were blind
+# to it.
+#
+# Copying the package is the smaller move rather than hoisting `agentspec` into
+# `shared/`: that is a real API decision about where the agent-spec parser belongs, and
+# it should not be made by a Dockerfile. `agentspec` itself is stdlib-only (pathlib, re,
+# tomllib, dataclasses), so this adds no dependencies.
+COPY eventrunner/ ./eventrunner/
+
 # TMPDIR is where config.py roots the SQLite store, the OpenAPI snapshot and the
 # pidfile ($TMPDIR/rossoctl-keda1/eventbridge). Mount a volume here to keep the
 # event history across container restarts.
