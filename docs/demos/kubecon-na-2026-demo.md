@@ -28,7 +28,7 @@ failure mode with no recovery.
 | **5** | Audit trail over the topic | 🟡 **PARTIAL** | built, never run on a cluster |
 | **6** | Forged *request* refused — the wake itself | 🟡 **PARTIAL** | scripted + tested, never run on a cluster |
 | **7** | Back to zero when idle | 🟢 **DOABLE TODAY** | — |
-| **8** | Blocked egress on a wrong-scope call | 🔴 **NEEDS WORK** | **cut it** — see §8 |
+| **8** | Blocked egress on a wrong-scope call | 🔴 **NEEDS WORK** | **cut it** — see §9 |
 | **—** | Allowlist drift between submit and wake | 🟡 **PARTIAL** | enforcement built; needs a demo stage |
 | **—** | No SVID, no consumption | 🔴 **NEEDS WORK** | no SPIRE anywhere |
 
@@ -40,7 +40,7 @@ real broker, and therefore any on-cluster signing figure. Tracked as
 **Changed 2026-10-13.** Two beats moved off the 🔴 list:
 
 - **Act 6, the forged *request*,** is now built — `assert_forged_request_refused` plus
-  `FORGE_REQUEST_SRC` in `scripts/k8s_demo_flow.py`, with eight tests in
+  `FORGE_REQUEST_SRC` in `scripts/k8s_demo_flow.py`, with six tests in
   `tests/test_demo_flow_signed.py` that prove the forged bytes decode as a well-formed
   request and are refused by the real `verify_request`, and that a genuinely signed one is
   accepted.
@@ -86,7 +86,7 @@ not comparable. Pick one and say which on the slide.
 python3 scripts/k8s_demo_flow.py --overlay kind-signed
 ```
 
-That drives acts 1–6 in order with assertions and timings. The acts below break out what is
+That drives acts 1–7 in order with assertions and timings. The acts below break out what is
 on screen and what to say over it.
 
 ---
@@ -284,9 +284,9 @@ the next wake enforces the new value. There is no long-lived process holding a s
 decision.
 
 **This is now a demonstrable claim, not just a nice line.** `ER_ALLOWED_SUBMITTERS` is read
-in `config.from_env` at startup and never per record, so editing it while replicas are 0
+in `config.load` at startup and never per record, so editing it while replicas are 0
 means the next wake enforces the new list. What is missing is a *stage* that performs the
-edit on camera — see §9.2.
+edit on camera — see §10.1.
 
 That is also the setup for the seam you are *not* demoing — see §9.
 
@@ -318,7 +318,7 @@ a deploy-time egress allowlist *is* the "trust-scope drift" seam the abstract ca
 **problem**. Demoing the static version straight would always have required an apology.
 Say that the composition's answer today is a deploy-time allowlist, that it drifts by
 construction, and that the honest fix is scope read at wake time — which needs the SPIRE
-work in §9.
+work in §10.2.
 
 **If you do build it**, two things apply: make the failure legible (a NetworkPolicy denial is
 a connection timeout, indistinguishable on stage from slow wifi — surface the agent's own
@@ -430,7 +430,7 @@ ykt1 and the cycle back to zero is 30–31 s, before the agent does any work.
 | 5–9 | The four seams, all named — the take-home artifact |
 | 9–13 | Seams 1 + 4: the wake contract and bound audit. Lead with the lag insight |
 | 13–17 | Seams 2 + 3: scope drift and delivery. Name what they do **not** prove |
-| 17–21 | **Demo** (recorded, narrated) — acts 1–6. Hard stop at 4 min |
+| 17–21 | **Demo** (recorded, narrated) — acts 1–7. Hard stop at 4 min |
 | 21–25 | **§8: thirteen claims that did not hold** — the differentiator |
 | 25–27 | What's next: the SPIRE upgrade path with its obstacles; Phase 3 tenancy as design |
 | 27–30 | Questions |

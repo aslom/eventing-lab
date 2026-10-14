@@ -48,8 +48,14 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from imagelib import DEFAULT_REGISTRY, DEFAULT_TAG  # noqa: E402
-from k8slib import Kubectl, dig  # noqa: E402
+# `proclib` only: this module re-executes ITSELF inside a pod on the eventrunner
+# image, and that image carries `shared/` and `eventrunner/` but NOT `scripts/`
+# (Dockerfile-eventrunner). So every scripts/-local import has to be reachable in
+# both places, and `audit_in_cluster` ships proclib.py into /tmp beside this file.
+#
+# `imagelib` and `k8slib` are imported lazily inside `audit_in_cluster` instead,
+# because only the HOST side needs them — a module-level import of either fails in
+# the pod with ModuleNotFoundError before argparse ever runs.
 from proclib import Checks, die  # noqa: E402
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
@@ -66,6 +72,22 @@ _STATE_NOTE = {
     "orphaned": "results naming a wake event that is not on this topic",
     "unknown": "no keyset: nothing was checked",
 }
+
+
+def _image_default(which: str) -> str | None:
+    """`imagelib`'s registry/tag default on the host, None inside the pod.
+
+    The pod has no `scripts/`, so this import cannot succeed there — and it does not
+    need to: the in-pod invocation passes `--local` and never builds an image ref.
+    Returning None keeps argparse working in both places without pinning a copy of
+    the registry name in a second file, which would be a value to keep in sync.
+    """
+    try:
+        import imagelib
+    except ModuleNotFoundError:
+        return None
+    return {"registry": imagelib.DEFAULT_REGISTRY,
+            "tag": imagelib.DEFAULT_TAG}[which]
 
 
 def read_topic(bootstrap: str, topic: str, *, limit: int, timeout_ms: int):
@@ -201,6 +223,10 @@ def audit_locally(args, c: Checks) -> int:
 
 def audit_in_cluster(args, c: Checks) -> int:
     """Run this same script inside a throwaway pod on the eventrunner image."""
+    # Host-only imports, deliberately not at module level — see the import block.
+    from imagelib import Images
+    from k8slib import Kubectl, dig
+
     k = Kubectl(context=args.context, namespace=args.namespace,
                 kubeconfig=args.kubeconfig)
     cfg = k.get("configmap", "eventing-config", namespace=args.namespace) or {}
@@ -214,9 +240,15 @@ def audit_in_cluster(args, c: Checks) -> int:
               "— this is a listing, not an audit (§8.5.2: state the default)")
 
     src = pathlib.Path(__file__).read_text()
+    # proclib.py rides along: the eventrunner image has no `scripts/`, so the copy
+    # of this file running in the pod cannot import it from anywhere else. Shipping
+    # the source beats adding scripts/ to the image, which would put build tooling
+    # into a runtime image for the sake of one debug command.
+    proclib_src = (pathlib.Path(__file__).resolve().parent / "proclib.py").read_text()
     inner = ["python", "-c",
              "import sys,pathlib;"
              "p=pathlib.Path('/tmp/audit_topic.py');"
+             f"pathlib.Path('/tmp/proclib.py').write_text({proclib_src!r});"
              f"p.write_text({src!r});"
              "sys.argv=['audit_topic.py','--local',"
              f"'--bootstrap',{bootstrap!r},"
@@ -232,7 +264,11 @@ def audit_in_cluster(args, c: Checks) -> int:
              "{'__name__':'__main__','__file__':'/app/scripts/audit_topic.py'})"]
     name = f"audit-{int(time.time())}"
     res = k.call(["run", name, "--rm", "-i", "--restart=Never", "--quiet",
-                  "--image", f"{args.registry}/rossoctl-eventrunner:{args.tag}",
+                  # Images(), not an f-string: DEFAULT_REGISTRY already ends in "/",
+                  # so interpolating another one renders "quay.io/aslomnet//rossoctl-…"
+                  # which podman rejects as an invalid reference. `normalize_prefix`
+                  # exists for exactly this and is what Images goes through.
+                  "--image", Images(args.registry, args.tag).eventrunner,
                   "--command", "--", *inner],
                  namespace=args.namespace, timeout=args.pod_timeout)
     out = (res.out or "") + (res.err or "")
@@ -268,9 +304,13 @@ def build_args(argv=None):
     ap.add_argument("--limit", type=int, default=2000)
     ap.add_argument("--timeout-ms", type=int, default=4000)
     ap.add_argument("--pod-timeout", type=float, default=240.0)
+    # argparse runs in BOTH places, so these defaults cannot come from a
+    # module-level `imagelib` import. In the pod the flags are unused (it is invoked
+    # with --local), so falling back to None there is correct rather than a guess;
+    # on the host the real defaults are read from imagelib as before.
     ap.add_argument("--registry", default=os.environ.get("REGISTRY_PREFIX",
-                                                         DEFAULT_REGISTRY))
-    ap.add_argument("--tag", default=os.environ.get("TAG", DEFAULT_TAG))
+                                                         _image_default("registry")))
+    ap.add_argument("--tag", default=os.environ.get("TAG", _image_default("tag")))
     return ap.parse_args(argv)
 
 

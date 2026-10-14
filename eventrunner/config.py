@@ -107,6 +107,21 @@ class Cfg:
     # verifier holding exactly one key accepts it; name it as soon as there are two.
     signing_kid: str = ""
 
+    # Who may ask this runner to do work: the `ce_submitter` logins it will act for.
+    #
+    # **A different question from the signature**, and the distinction is the whole
+    # reason the field exists. A verified signature says *EventBridge published this*;
+    # it says nothing about *who asked*. Until this existed the runner only ever asked
+    # the first question, so any approved bridge could wake any agent for anyone.
+    #
+    # Empty (the default) means no allowlist and no enforcement, so existing
+    # deployments are unaffected. `submitter` is in `signing.SIGNED_ATTRS`, so on a
+    # SIGNED event the value cannot be rewritten in flight — which is what makes this
+    # worth enforcing at all. On an unsigned event it is attacker-chosen, hence the
+    # warning __main__.py prints: an allowlist without signature enforcement filters
+    # honest clients and restricts nobody.
+    allowed_submitters: tuple[str, ...] = ()
+
     # ---- Phase 3 (docs/specs/0004-phase3-tenancy-agents-triggers.md) ----
 
     # §3.3 — which tenant this runner serves. Stamped on every response as
@@ -166,6 +181,20 @@ def load() -> Cfg:
     cfg.transcript_sync       = _bool(e("ER_TRANSCRIPT_SYNC"), True)
     cfg.eventbridge_url       = e("ER_EVENTBRIDGE_URL", cfg.eventbridge_url)
     cfg.transcript_max_bytes  = int(e("ER_TRANSCRIPT_MAX_BYTES", str(cfg.transcript_max_bytes)))
+
+    # Lower-cased because GitHub logins are case-insensitive — `Alice` and `alice` are
+    # one account, and comparing case-sensitively would refuse a genuinely approved
+    # submitter over how an operator typed the list. Same reasoning as
+    # `ghauth.parse_allowed_users`.
+    #
+    # **Absent means "no allowlist", not "nobody approved"** — the opposite of
+    # `ghauth.is_allowed`, and the difference is deliberate. On EventBridge an empty
+    # list with sign-in configured means the operator forgot to say who may submit, so
+    # denying is right. Here the variable IS the opt-in: defaulting to deny would make
+    # every existing deployment stop processing work the moment it upgraded.
+    cfg.allowed_submitters = tuple(
+        s.strip().lower() for s in (e("ER_ALLOWED_SUBMITTERS") or "").split(",")
+        if s.strip())
 
     cfg.require_signature  = _bool(e("ER_REQUIRE_SIGNATURE"), False)
     cfg.signing_key_path   = e("ER_SIGNING_KEY_PATH", cfg.signing_key_path)

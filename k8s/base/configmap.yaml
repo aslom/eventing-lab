@@ -48,6 +48,14 @@ data:
   # group.completed and end a batch early.
   ER_SIGNING_KID: ""
   EB_SIGNING_KID: ""
+  # Who may ask this runner to work: the ce_submitter logins it acts for,
+  # comma-separated. A different question from the signature — a verified
+  # signature says EventBridge published the event, not who asked for it.
+  # Empty means NO allowlist (not "nobody"), so existing deployments are
+  # unaffected; the variable is the opt-in. Enforced only after the signature
+  # check, because ce_submitter is trustworthy only on a signed event.
+  # A ConfigMap value, not a Secret: it is a list of public usernames.
+  ER_ALLOWED_SUBMITTERS: ""
   # Audit before enforce. With a keyset configured but this false, EventBridge
   # verifies responses and logs what failed while storing them unchanged; true
   # rewrites a failure to phase=error, which is persisted and raises a

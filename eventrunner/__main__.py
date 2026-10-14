@@ -80,6 +80,35 @@ def main() -> int:
               f"({cfg.verify_key_path or cfg.signing_key_path}); "
               "set ER_VERIFY_KEYSET_PATH for an approved-agent list")
 
+    # Who may ASK, printed separately from who may SIGN because they are different
+    # questions and conflating them is how examples#888 happened: an operator who
+    # configured one and was told the other was on.
+    #
+    # The list is ENFORCED either way — it really does refuse unlisted submitters, so
+    # this must not call it advisory — but what it is WORTH differs completely:
+    #
+    #   signature enforced -> `submitter` is covered by SIGNED_ATTRS, so the list
+    #                         restricts who can actually cause work. A control.
+    #   signature off      -> `submitter` is whatever the publisher typed, so the list
+    #                         stops honest clients and nobody else. A speed bump.
+    #
+    # Saying "ON" in both cases is how an operator ends up believing they have the
+    # first when they have the second, which is §8.5.3 exactly. State which one it is.
+    if cfg.allowed_submitters:
+        print(f"[eventrunner] submitter allowlist ON — "
+              f"{len(cfg.allowed_submitters)} approved: "
+              f"{', '.join(cfg.allowed_submitters)}. A request whose ce_submitter is "
+              f"absent or unlisted is refused, offset committed, agent not run")
+        if not cfg.require_signature:
+            print("[eventrunner] WARNING: ER_REQUIRE_SIGNATURE is false, so "
+                  "ce_submitter is NOT authenticated — the list is enforced, but "
+                  "anyone who can write to the requests topic can claim any login on "
+                  "it. Set ER_REQUIRE_SIGNATURE=true for the allowlist to restrict "
+                  "rather than merely filter")
+    else:
+        print("[eventrunner] submitter allowlist OFF (set ER_ALLOWED_SUBMITTERS to "
+              "restrict which ce_submitter logins this runner acts for)")
+
     emitter = Emitter(cfg.kafka_bootstrap, cfg.response_topic, cfg.source_uri,
                       seed=seed, kid=cfg.signing_kid or None,
                       userkey=cfg.userkey or None)
