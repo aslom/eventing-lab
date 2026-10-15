@@ -437,9 +437,52 @@ class Deployer:
             self.c.log(f"  {line}")
         if self.args.dry_run:
             return
+        # §11 — the keyset AGAIN, deliberately, because the apply above just
+        # overwrote it. `k8s/base/keyset-configmap.yaml` is committed holding `{}`
+        # (on purpose: a key in the repo is the thing that file exists to prevent)
+        # and it is in `base/kustomization.yaml`, so every `apply -k` resets the
+        # ConfigMap that `ensure_signing_material` populated seconds earlier.
+        #
+        # The symptom was a deploy that reported
+        #   ConfigMap/eventing-keyset applied with 2 kid(s)      <- true when written
+        #   configmap/eventing-keyset configured                 <- overwritten here
+        # and left the cluster with `{}`, so EventBridge started ENFORCING with zero
+        # approved kids and refused every response. Found on the first real cluster
+        # run (eventing-lab#2); re-running the deploy could never fix it.
+        #
+        # Re-applying after the overlay rather than dropping the file from the base:
+        # the empty ConfigMap is what makes the volume mount valid for the unsigned
+        # overlays, which mount it `optional: true` and expect "approves nobody".
+        if self.args.signing_keys:
+            ensure_signing_material(self.k, self.c, self.ns, self.args.signing_keys,
+                                    dry_run=False)
+            if not self.c.failed:
+                self._verify_keyset_landed()
         self.c.expect_run(self.k.rollout_status("deploy/eventbridge",
                                                namespace=self.ns, timeout=240),
                           "deploy/eventbridge rolled out")
+
+    def _verify_keyset_landed(self) -> None:
+        """Read the keyset back FROM THE CLUSTER and assert it is not empty.
+
+        Every other report in this script describes what was sent. This one checks
+        what arrived, which is the only kind of check that would have caught the
+        overwrite above — `apply` succeeded each time, so no return code was wrong.
+        """
+        cm = self.k.get("configmap", KEYSET_CONFIGMAP, namespace=self.ns,
+                        missing_ok=True) or {}
+        raw = dig(cm, "data", "agents.json") or ""
+        try:
+            kids = sorted(json.loads(raw)) if raw.strip() else []
+        except json.JSONDecodeError as e:
+            self.c.fail(f"ConfigMap/{KEYSET_CONFIGMAP} holds valid JSON", str(e))
+            return
+        self.c.expect(bool(kids),
+                      f"ConfigMap/{KEYSET_CONFIGMAP} in the cluster holds "
+                      f"{len(kids)} kid(s): {', '.join(kids)}",
+                      "the cluster's keyset is EMPTY after the apply. A signed "
+                      "overlay would start enforcing with no approved key and "
+                      "refuse every event.")
 
     def step4_publish_url(self) -> str:
         """Set EVENT_BRIDGE_PUBLIC_BASE_URL to the Route host, then PROVE it.

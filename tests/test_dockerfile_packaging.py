@@ -126,3 +126,82 @@ def test_the_import_scanner_actually_finds_the_known_cross_package_import():
         "the scanner no longer sees eventbridge -> eventrunner; either the import "
         "was removed (then drop the COPY and these tests) or the regex broke")
     assert any("handlers.py" in s for s in found["eventrunner"]), found["eventrunner"]
+
+
+# ---- the committed-empty keyset vs the deploy that populates it -------------
+#
+# `k8s/base/keyset-configmap.yaml` is committed holding `{}` on purpose (a key in
+# the repo is what that file exists to prevent) and it IS in base/kustomization.yaml.
+# So `kubectl apply -k <overlay>` always resets the keyset — including the copy that
+# `ensure_signing_material` wrote moments earlier.
+#
+# On the first real cluster run (eventing-lab#2) the deploy reported:
+#
+#     ConfigMap/eventing-keyset: 2 approved kid(s): eb-01, runner-01
+#     PASS ConfigMap/eventing-keyset applied with 2 kid(s)
+#     configmap/eventing-keyset configured         <- the overlay, overwriting it
+#     ALL 40 CHECKS PASSED
+#
+# and left `{}` in the cluster. EventBridge then started "response verification ON
+# (ENFORCING) — 0 kid(s)" and refused every response, so no run could ever complete.
+# Re-running the deploy could not fix it; every apply repeated the overwrite.
+
+def _deploy_src() -> str:
+    return (REPO / "scripts" / "k8s_deploy.py").read_text()
+
+
+def _call_lines(src: str, name: str) -> list[int]:
+    """Line numbers where `name` is CALLED — not defined, not named in a comment.
+
+    An earlier version of these tests searched the raw text and passed against
+    code with the re-apply deleted, because a comment mentioning the function and
+    its own `def` both matched. Checking call sites is the whole point here.
+    """
+    out = []
+    for n, line in enumerate(src.splitlines(), 1):
+        code = line.split("#", 1)[0]
+        if re.search(rf"(?<!def )\b{re.escape(name)}\s*\(", code):
+            out.append(n)
+    return out
+
+
+def test_the_committed_keyset_is_empty():
+    """The premise. If someone populates this file, the ordering problem below
+    disappears but a public key has been committed — which is the thing the file's
+    own header forbids."""
+    import json as _json
+    text = (REPO / "k8s" / "base" / "keyset-configmap.yaml").read_text()
+    # Drop the `|` block indicator that follows the key, then join the block body.
+    body = text.split("agents.json:", 1)[1].split("\n", 1)[1]
+    payload = "".join(line.strip() for line in body.splitlines() if line.strip())
+    assert _json.loads(payload) == {}, (
+        "k8s/base/keyset-configmap.yaml must stay empty — see its header")
+
+
+def test_the_keyset_is_applied_after_the_overlay_too():
+    """The fix: `ensure_signing_material` must run AFTER `apply_kustomize`, not
+    only before it. Before-only is what left the cluster with `{}`."""
+    src = _deploy_src()
+    applies = _call_lines(src, "apply_kustomize")
+    ensures = _call_lines(src, "ensure_signing_material")
+    assert applies, "no apply_kustomize call site found"
+    assert ensures, "no ensure_signing_material call site found"
+    assert any(e > max(applies) for e in ensures), (
+        f"ensure_signing_material is only called at {ensures}, all before "
+        f"apply_kustomize at {applies}. The overlay's committed `{{}}` then wins "
+        f"and a signed overlay enforces with zero approved kids.")
+
+
+def test_the_deploy_reads_the_keyset_back_from_the_cluster():
+    """Every other check in k8s_deploy.py reports what was SENT. The overwrite was
+    invisible to all of them because each apply really did succeed, so only a
+    read-back can catch it."""
+    src = _deploy_src()
+    assert "def _verify_keyset_landed" in src, "_verify_keyset_landed is missing"
+    assert _call_lines(src, "self._verify_keyset_landed"), (
+        "_verify_keyset_landed is defined but never CALLED — k8s_deploy.py must "
+        "read the keyset back from the cluster and assert it is non-empty after "
+        "applying the overlay")
+    fn = src.split("def _verify_keyset_landed", 1)[1][:1600]
+    assert "get(" in fn and "agents.json" in fn, (
+        "_verify_keyset_landed must read ConfigMap data from the cluster")

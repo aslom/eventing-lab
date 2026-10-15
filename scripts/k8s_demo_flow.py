@@ -191,6 +191,20 @@ def get_json(url, *, timeout=10.0, method="GET", body=None):
         return r.status, (json.loads(raw) if raw else None)
 
 
+def get_status(url, *, timeout=10.0):
+    """The HTTP status alone, without parsing the body.
+
+    `/events.jsonl` serves JSON **Lines**, so `get_json` raises JSONDecodeError on
+    it ("Expecting value: line 2 column 1") even though the request succeeded. A
+    caller that only wants to know whether a resource exists must not be forced to
+    parse it — see `assert_forged_request_refused`, which crashed the whole flow
+    on a 200 it was about to treat as a failed assertion anyway.
+    """
+    req = urllib.request.Request(url, method="GET")
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.status
+
+
 class Flow:
     def __init__(self, k: Kubectl, c: Checks, args) -> None:
         self.k = k
@@ -851,9 +865,10 @@ class Flow:
                 break
         # The outcome, not the verdict: no agent ran for this correlation.
         try:
-            status, _ = get_json(f"{self.base}/v0/agents/{corr}/events.jsonl",
-                                 timeout=15)
-            ran = status == 200
+            # `get_status`, not `get_json`: this endpoint serves JSON Lines, which
+            # `json.loads` cannot parse. Only existence matters here.
+            ran = get_status(f"{self.base}/v0/agents/{corr}/events.jsonl",
+                             timeout=15) == 200
         except urllib.error.HTTPError as e:
             ran = e.code not in (404, 410)
         except (urllib.error.URLError, OSError) as e:
