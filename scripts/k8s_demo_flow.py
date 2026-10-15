@@ -816,8 +816,23 @@ class Flow:
             rows = [json.loads(line) for line in raw.splitlines() if line.strip()]
         except (urllib.error.URLError, OSError) as e:
             return self.c.fail("GET the victim's transcript", str(e))
-        self.c.expect(not any("Ship the goods" in json.dumps(r) for r in rows),
-                      "and the forged text is nowhere in the victim's transcript")
+        # The forged text MUST still be findable — `kafka_in.py:205` stores the event
+        # "as it actually arrived" under `data.rejected` on purpose, as the forensic
+        # record an operator reviews. An earlier revision asserted the text was
+        # "nowhere in the transcript", which contradicted that design and failed on a
+        # correctly-behaving system.
+        #
+        # What must be true is narrower and is the actual claim: the forgery is never a
+        # LIVE answer. So it may appear only inside a rejection envelope, never as the
+        # `text` of a row that is not marked rejected.
+        live_forged = [r for r in rows
+                       if "Ship the goods" in json.dumps((r.get("data") or {}).get(
+                           "text", ""))
+                       and not (r.get("data") or {}).get("signature_rejected")]
+        self.c.expect(not live_forged,
+                      "the forged text appears only inside a rejection envelope, "
+                      "never as a live answer",
+                      f"{len(live_forged)} unrejected row(s) carry the forged text")
         rejected = [r for r in rows
                     if (r.get("data") or {}).get("signature_rejected")]
         if self.args.forge_collide:
@@ -896,13 +911,24 @@ class Flow:
                 self.c.log(f"  {line.strip()[:160]}")
                 break
         # The outcome, not the verdict: no agent ran for this correlation.
+        #
+        # Asserted on EVENT COUNT, not on the status code. In single-tenant mode
+        # `handlers._store_of` returns the one store for ANY correlation id, so
+        # `/events.jsonl` answers 200 with an empty body for ids that were never
+        # minted — its 404 branch is unreachable unless `self.stores` is set. An
+        # earlier revision read 200 as "a transcript exists" and reported a correctly
+        # refused forgery as EXECUTED, which is the worst direction for this beat to
+        # be wrong in: it cried wolf about the control it exists to confirm.
         try:
-            # `get_status`, not `get_json`: this endpoint serves JSON Lines, which
-            # `json.loads` cannot parse. Only existence matters here.
-            ran = get_status(f"{self.base}/v0/agents/{corr}/events.jsonl",
-                             timeout=15) == 200
+            raw = urllib.request.urlopen(
+                f"{self.base}/v0/agents/{corr}/events.jsonl", timeout=15
+            ).read().decode()
+            ran = bool([ln for ln in raw.splitlines() if ln.strip()])
         except urllib.error.HTTPError as e:
-            ran = e.code not in (404, 410)
+            if e.code in (404, 410):
+                ran = False          # multi-tenant: the id was never placed
+            else:
+                return self.c.fail("GET the forged correlation's transcript", str(e))
         except (urllib.error.URLError, OSError) as e:
             return self.c.fail("GET the forged correlation's transcript", str(e))
         self.c.expect(not ran,
