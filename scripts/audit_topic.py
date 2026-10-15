@@ -263,7 +263,36 @@ def audit_in_cluster(args, c: Checks) -> int:
              "exec(compile(p.read_text(),'audit_topic.py','exec'),"
              "{'__name__':'__main__','__file__':'/app/scripts/audit_topic.py'})"]
     name = f"audit-{int(time.time())}"
-    res = k.call(["run", name, "--rm", "-i", "--restart=Never", "--quiet",
+    # The keyset has to be MOUNTED, not just named. The docstring above promises "the
+    # keyset it verifies against is literally the one the deployment uses", and the
+    # path comes from the deployment's own ConfigMap — but a plain `kubectl run`
+    # mounts no volumes, so the pod died on:
+    #
+    #     [audit] ABORT could not load the keyset:
+    #     [Errno 2] No such file or directory: '/etc/ce-keyset/agents.json'
+    #
+    # `--overrides` adds the same ConfigMap volume the Deployments use. `optional:
+    # true` matches the base manifests: a deployment with no keyset configured is a
+    # valid listing-only audit, which the `if not ks_path` branch above already
+    # explains.
+    overrides = {}
+    if ks_path:
+        mount_dir = str(pathlib.PurePosixPath(ks_path).parent)
+        overrides = {"spec": {
+            "containers": [{
+                "name": name,
+                "image": Images(args.registry, args.tag).eventrunner,
+                "command": inner,
+                "volumeMounts": [{"name": "keyset", "mountPath": mount_dir,
+                                  "readOnly": True}],
+            }],
+            "volumes": [{"name": "keyset",
+                         "configMap": {"name": "eventing-keyset", "optional": True}}],
+        }}
+    run_argv = ["run", name, "--rm", "-i", "--restart=Never", "--quiet"]
+    if overrides:
+        run_argv += ["--overrides", json.dumps(overrides)]
+    res = k.call(run_argv + [
                   # Images(), not an f-string: DEFAULT_REGISTRY already ends in "/",
                   # so interpolating another one renders "quay.io/aslomnet//rossoctl-…"
                   # which podman rejects as an invalid reference. `normalize_prefix`

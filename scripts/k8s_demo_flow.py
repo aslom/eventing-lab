@@ -191,6 +191,24 @@ def get_json(url, *, timeout=10.0, method="GET", body=None):
         return r.status, (json.loads(raw) if raw else None)
 
 
+def get_status(url, *, timeout=10.0):
+    """The HTTP status alone, without parsing the body.
+
+    `/events.jsonl` serves JSON **Lines**, so `get_json` raises JSONDecodeError on
+    it ("Expecting value: line 2 column 1") even though the request succeeded.
+
+    **Not usable for "does this transcript exist?"** — in single-tenant mode
+    `handlers._store_of` returns the one store for any correlation id, so
+    `/events.jsonl` answers 200 with an empty body for ids that were never
+    minted. `assert_forged_request_refused` counts events instead, for exactly
+    that reason. Currently unused; kept for existence checks on endpoints whose
+    404 branch is reachable.
+    """
+    req = urllib.request.Request(url, method="GET")
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.status
+
+
 class Flow:
     def __init__(self, k: Kubectl, c: Checks, args) -> None:
         self.k = k
@@ -723,20 +741,52 @@ class Flow:
         that the batch did not settle and the genuine answer survived.
         """
         self.c.section("forged event refused — enforcement acts (examples#885)")
-        # A batch of 2 with only ONE prompt submitted, so the group stays OPEN: a forged
-        # `group.completed` has something to end prematurely, which is the whole point.
+        # The beat needs a group that is OPEN but already holds one GENUINE finished
+        # answer: open so a forged `group.completed` has something to end prematurely,
+        # and genuine so there is a real row for the forgery to fail to overwrite.
+        #
+        # Built in two calls rather than one, because one cannot express it. An earlier
+        # revision posted `expected: 2` together with a single prompt, which
+        # `eventbridge/handlers.py:325` correctly refuses as contradictory
+        # ("expected=2 contradicts 1 prompts") — so this stage failed on a 400 before
+        # it tested anything about signing. That validation is catching a real operator
+        # error and is not the thing to relax.
+        #
+        # Two prompts with the forgery racing the second member was the other candidate
+        # and is rejected on purpose: in mock mode a turn is ~2s while `_publish_forgery`
+        # must first start a pod, so the batch would reliably settle legitimately before
+        # the forgery landed and this stage would fail for a reason unrelated to
+        # signatures. A demo beat that is intermittently wrong is worse than one that is
+        # missing.
+        #
+        # So: create the group with `expected` and NO prompts (handlers.py:322 allows
+        # exactly that), then add one member through `POST /v0/agents` with `groupid`,
+        # which `handlers.py:283` records via `add_group_member`. Deterministic: the
+        # group is provably 1-of-2 when the forgery is published.
         try:
             status, body = get_json(
                 f"{self.base}/v0/groups", method="POST", timeout=60,
-                body=json.dumps({"label": "forgery-target", "expected": 2,
-                                 "prompts": ["Say ok and nothing else."],
-                                 "max_turns": 1}).encode())
+                body=json.dumps({"label": "forgery-target", "expected": 2}).encode())
         except (urllib.error.URLError, OSError) as e:
             return self.c.fail("POST /v0/groups for the forgery target", str(e))
         gid = (body or {}).get("groupid", "")
         if not self.c.expect(status == 202 and gid,
-                             f"an OPEN group of 2 created with 1 real member -> {gid}",
+                             f"an OPEN group expecting 2 members created -> {gid}",
                              f"status={status} body={body}"):
+            return
+        # Exactly ONE of the two expected members, so the batch cannot settle on its own.
+        try:
+            status, mbody = get_json(
+                f"{self.base}/v0/agents", method="POST", timeout=60,
+                body=json.dumps({"prompt": "Say ok and nothing else.",
+                                 "max_turns": 1, "groupid": gid}).encode())
+        except (urllib.error.URLError, OSError) as e:
+            return self.c.fail("POST /v0/agents for the group's one real member",
+                               str(e))
+        if not self.c.expect(status == 202 and (mbody or {}).get("correlationid"),
+                             f"1 of the 2 expected members submitted -> "
+                             f"{(mbody or {}).get('correlationid')}",
+                             f"status={status} body={mbody}"):
             return
         self.c.log(f"  {self.base}/v0/groups/{gid}")
         done = wait_for(lambda: (self._group_status(gid) or {}).get("terminal", 0) >= 1,
@@ -770,8 +820,23 @@ class Flow:
             rows = [json.loads(line) for line in raw.splitlines() if line.strip()]
         except (urllib.error.URLError, OSError) as e:
             return self.c.fail("GET the victim's transcript", str(e))
-        self.c.expect(not any("Ship the goods" in json.dumps(r) for r in rows),
-                      "and the forged text is nowhere in the victim's transcript")
+        # The forged text MUST still be findable — `kafka_in.py:208` stores the event
+        # "as it actually arrived" under `data.rejected` on purpose, as the forensic
+        # record an operator reviews. An earlier revision asserted the text was
+        # "nowhere in the transcript", which contradicted that design and failed on a
+        # correctly-behaving system.
+        #
+        # What must be true is narrower and is the actual claim: the forgery is never a
+        # LIVE answer. So it may appear only inside a rejection envelope, never as the
+        # `text` of a row that is not marked rejected.
+        live_forged = [r for r in rows
+                       if "Ship the goods" in json.dumps((r.get("data") or {}).get(
+                           "text", ""))
+                       and not (r.get("data") or {}).get("signature_rejected")]
+        self.c.expect(not live_forged,
+                      "the forged text appears only inside a rejection envelope, "
+                      "never as a live answer",
+                      f"{len(live_forged)} unrejected row(s) carry the forged text")
         rejected = [r for r in rows
                     if (r.get("data") or {}).get("signature_rejected")]
         if self.args.forge_collide:
@@ -834,9 +899,17 @@ class Flow:
             return
         # The pod has to wake before it can refuse, so wait for the refusal rather than
         # sleeping a fixed interval: the wake is 1-5s and the poll adds more.
+        # Match on THIS forgery's correlation id, and read the whole log rather than
+        # the last 400 lines. Both matter: `tail=400` plus a generic phrase made this
+        # assertion lose a refusal that had happened. When T5.6 runs first it drops
+        # ~64 stale requests, each logging a line, so the refusal scrolled out of the
+        # window and the beat reported "the request was ACCEPTED" about a request the
+        # runner had correctly refused — while the two checks below it still passed,
+        # proving no agent ran. A unique id cannot collide with another stage's output.
+        needle = f"rejecting unsigned/badly-signed request corr={corr}"
         seen = wait_for(
-            lambda: "rejecting unsigned/badly-signed request" in (
-                self.k.logs("deploy/eventrunner", namespace=self.ns, tail=400) or ""),
+            lambda: needle in (
+                self.k.logs("deploy/eventrunner", namespace=self.ns, tail=-1) or ""),
             timeout=180, interval=5)
         self.c.expect(bool(seen),
                       f"the runner refused it and said why ({seen.elapsed_s:.0f}s) — "
@@ -844,18 +917,33 @@ class Flow:
                       "no refusal in the runner log. If the pod never woke, KEDA did "
                       "not see the lag; if it woke and said nothing, the request was "
                       "ACCEPTED and that is the bug this beat exists to catch")
-        logs = self.k.logs("deploy/eventrunner", namespace=self.ns, tail=400) or ""
+        logs = self.k.logs("deploy/eventrunner", namespace=self.ns, tail=-1) or ""
         for line in logs.splitlines():
-            if "rejecting unsigned" in line:
+            # `needle`, not "rejecting unsigned": with several forgeries on the topic
+            # the first match could be a previous run's, which would show the operator
+            # a refusal that is not the one just demonstrated.
+            if needle in line:
                 self.c.log(f"  {line.strip()[:160]}")
                 break
         # The outcome, not the verdict: no agent ran for this correlation.
+        #
+        # Asserted on EVENT COUNT, not on the status code. In single-tenant mode
+        # `handlers._store_of` returns the one store for ANY correlation id, so
+        # `/events.jsonl` answers 200 with an empty body for ids that were never
+        # minted — its 404 branch is unreachable unless `self.stores` is set. An
+        # earlier revision read 200 as "a transcript exists" and reported a correctly
+        # refused forgery as EXECUTED, which is the worst direction for this beat to
+        # be wrong in: it cried wolf about the control it exists to confirm.
         try:
-            status, _ = get_json(f"{self.base}/v0/agents/{corr}/events.jsonl",
-                                 timeout=15)
-            ran = status == 200
+            raw = urllib.request.urlopen(
+                f"{self.base}/v0/agents/{corr}/events.jsonl", timeout=15
+            ).read().decode()
+            ran = bool([ln for ln in raw.splitlines() if ln.strip()])
         except urllib.error.HTTPError as e:
-            ran = e.code not in (404, 410)
+            if e.code in (404, 410):
+                ran = False          # multi-tenant: the id was never placed
+            else:
+                return self.c.fail("GET the forged correlation's transcript", str(e))
         except (urllib.error.URLError, OSError) as e:
             return self.c.fail("GET the forged correlation's transcript", str(e))
         self.c.expect(not ran,
