@@ -40,6 +40,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -458,9 +459,24 @@ class Deployer:
                                     dry_run=False)
             if not self.c.failed:
                 self._verify_keyset_landed()
+                # The ConfigMap being right is not the same as the RUNNING pod
+                # having read it: the keyset is a volume mount and
+                # `keyset.load_if_set` runs once at startup
+                # (eventbridge/__main__.py:65), live reload deliberately absent.
+                # A pod that started while the overlay's `{}` was in place keeps
+                # an empty set until it restarts, and an unchanged overlay
+                # triggers no rollout — so without this, a re-deploy fixes the
+                # ConfigMap and leaves the cluster enforcing with zero approved
+                # kids. `rollout_status` below then waits for the new pod.
+                self.c.expect_run(
+                    self.k.call(["rollout", "restart", "deploy/eventbridge"],
+                                namespace=self.ns),
+                    "deploy/eventbridge restarted so it re-reads the keyset")
         self.c.expect_run(self.k.rollout_status("deploy/eventbridge",
                                                namespace=self.ns, timeout=240),
                           "deploy/eventbridge rolled out")
+        if self.args.signing_keys and not self.c.failed:
+            self._verify_keyset_enforcing()
 
     def _verify_keyset_landed(self) -> None:
         """Read the keyset back FROM THE CLUSTER and assert it is not empty.
@@ -483,6 +499,30 @@ class Deployer:
                       "the cluster's keyset is EMPTY after the apply. A signed "
                       "overlay would start enforcing with no approved key and "
                       "refuse every event.")
+
+    def _verify_keyset_enforcing(self) -> None:
+        """Read EventBridge's OWN startup line back from the pod.
+
+        `_verify_keyset_landed` proves the ConfigMap; this proves the process.
+        EventBridge loads the keyset once at startup and prints
+        `response verification ON (ENFORCING) — N kid(s)`
+        (eventbridge/__main__.py:70), where N is the count it actually loaded —
+        the number this whole step exists to make non-zero, read from the only
+        place that knows it. Runs after `rollout restart`, so the log belongs to
+        a pod that started after the keyset was restored.
+        """
+        log = self.k.logs("deploy/eventbridge", namespace=self.ns, tail=200)
+        m = re.search(r"response verification ON \(ENFORCING\) — (\d+) kid\(s\)",
+                      log or "")
+        kids = int(m.group(1)) if m else 0
+        tail = "\n".join((log or "").strip().splitlines()[-8:])
+        self.c.expect(m is not None and kids > 0,
+                      f"EventBridge is ENFORCING with {kids} kid(s) loaded "
+                      "in-process",
+                      f"expected 'response verification ON (ENFORCING) — N kid(s)' "
+                      f"with N > 0 in the pod's startup log — the ConfigMap can be "
+                      f"right while the process still enforces with nothing. Last "
+                      f"lines of the log:\n{tail}")
 
     def step4_publish_url(self) -> str:
         """Set EVENT_BRIDGE_PUBLIC_BASE_URL to the Route host, then PROVE it.

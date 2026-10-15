@@ -207,6 +207,28 @@ def test_the_deploy_reads_the_keyset_back_from_the_cluster():
         "_verify_keyset_landed must read ConfigMap data from the cluster")
 
 
+def test_the_deploy_proves_the_running_pod_enforces():
+    """`_verify_keyset_landed` proves the ConfigMap; the pod must be proven too.
+
+    The keyset is a volume mount read once at startup (live reload deliberately
+    absent, eventbridge/__main__.py:65), so a pod that started while the
+    overlay's `{}` was in place keeps an empty set until it restarts — and an
+    unchanged overlay triggers no rollout, so a re-deploy would fix the ConfigMap
+    and leave the process enforcing with nothing. The deploy must restart the
+    deployment itself and read the pod's OWN startup line back.
+    """
+    src = _deploy_src()
+    assert "def _verify_keyset_enforcing" in src, "_verify_keyset_enforcing is missing"
+    assert _call_lines(src, "self._verify_keyset_enforcing"), (
+        "_verify_keyset_enforcing is defined but never CALLED — the deploy must "
+        "prove the RUNNING pod enforces with the keyset, not only that the "
+        "ConfigMap holds it")
+    assert re.search(r'\["rollout", "restart", "deploy/eventbridge"\]', src), (
+        "a pod that started on the overlay's `{}` never re-reads the keyset, and "
+        "an unchanged overlay triggers no rollout — the deploy must restart "
+        "deploy/eventbridge itself")
+
+
 # ---- the forged-RESPONSE beat must build its group through the API ----------
 #
 # `assert_forged_event_refused` needs a group that is OPEN (so a forged
