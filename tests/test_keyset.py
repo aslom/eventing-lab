@@ -585,8 +585,9 @@ def test_both_services_actually_call_the_refusal_and_exit_on_it():
     """The guard the other tests cannot provide. `refusal_if_enforcing_empty` returning
     a string proves nothing if no service calls it, or calls it and drops the result —
     which is the exact shape of the bug this fixes: a check that verified an intent
-    rather than a state. Mutation-checked both ways: removing either the call or the
-    `raise` fails this.
+    rather than a state. Mutation-checked four ways: removing the call, dropping the
+    `raise`, raising `ValueError` instead of `SystemExit`, and raising somewhere other
+    than the refusal's own `if` body each fail this.
     """
     import ast
     import pathlib
@@ -594,8 +595,7 @@ def test_both_services_actually_call_the_refusal_and_exit_on_it():
     root = pathlib.Path(__file__).resolve().parent.parent
     for svc, env_var in (("eventbridge", "EB_VERIFY_KEYSET_PATH"),
                          ("eventrunner", "ER_VERIFY_KEYSET_PATH")):
-        src = (root / svc / "__main__.py").read_text()
-        tree = ast.parse(src)
+        tree = ast.parse((root / svc / "__main__.py").read_text())
         calls = [
             n for n in ast.walk(tree)
             if isinstance(n, ast.Call)
@@ -604,15 +604,25 @@ def test_both_services_actually_call_the_refusal_and_exit_on_it():
         ]
         assert len(calls) == 1, f"{svc} must call the refusal exactly once"
 
-        # The call has to be inside a statement that exits, not merely evaluated.
-        exits = [
+        # The refusal has to CAUSE the exit: the call is the `if` test, and that
+        # `if`'s own body raises SystemExit. `ast.walk` over the whole If would also
+        # accept a raise nested somewhere unrelated, and any Raise would accept a
+        # ValueError — which exits, but as a traceback rather than the one clean line
+        # in `kubectl logs` this policy exists to produce (see __main__.py's §11).
+        guards = [
             n for n in ast.walk(tree)
             if isinstance(n, ast.If)
-            and any(isinstance(c, ast.Call)
-                    and isinstance(c.func, ast.Attribute)
-                    and c.func.attr == "refusal_if_enforcing_empty"
-                    for c in ast.walk(n.test))
-            and any(isinstance(s, ast.Raise) for s in ast.walk(n))
+            and calls[0] in list(ast.walk(n.test))
+            and any(isinstance(s, ast.Raise)
+                    and isinstance(s.exc, ast.Call)
+                    and isinstance(s.exc.func, ast.Name)
+                    and s.exc.func.id == "SystemExit"
+                    for s in n.body)
         ]
-        assert exits, f"{svc} must raise on the refusal, not just compute it"
-        assert env_var in src, f"{svc} must pass its own env var name"
+        assert guards, f"{svc} must raise SystemExit directly on the refusal"
+
+        # The env var comes from the call's own keyword, not from "it appears
+        # somewhere in the file" — a comment mentioning it would satisfy that.
+        passed = {k.arg: k.value for k in calls[0].keywords}.get("env_var")
+        assert isinstance(passed, ast.Constant) and passed.value == env_var, \
+            f"{svc} must pass env_var={env_var!r} to the refusal"
