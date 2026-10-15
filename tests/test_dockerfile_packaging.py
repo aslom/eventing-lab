@@ -255,9 +255,18 @@ def _demo_flow_src() -> str:
 
 
 def _forged_response_stage() -> str:
+    """The source of `assert_forged_event_refused`, sliced to its END.
+
+    Not a fixed byte count: the stage is ~8.4k chars and growing (its comments
+    carry the reasoning for the two-call group), so any constant window either
+    truncates the payload these tests look for — making the negative assertion
+    below pass vacuously — or has to be revised every time the stage gains a
+    paragraph.
+    """
     src = _demo_flow_src()
     start = src.index("def assert_forged_event_refused")
-    return src[start:start + 4000]
+    nxt = re.search(r"\n    def ", src[start:])
+    return src[start:start + nxt.start()] if nxt else src[start:]
 
 
 def test_the_forgery_target_group_is_not_created_with_a_contradictory_payload():
