@@ -195,10 +195,14 @@ def get_status(url, *, timeout=10.0):
     """The HTTP status alone, without parsing the body.
 
     `/events.jsonl` serves JSON **Lines**, so `get_json` raises JSONDecodeError on
-    it ("Expecting value: line 2 column 1") even though the request succeeded. A
-    caller that only wants to know whether a resource exists must not be forced to
-    parse it — see `assert_forged_request_refused`, which crashed the whole flow
-    on a 200 it was about to treat as a failed assertion anyway.
+    it ("Expecting value: line 2 column 1") even though the request succeeded.
+
+    **Not usable for "does this transcript exist?"** — in single-tenant mode
+    `handlers._store_of` returns the one store for any correlation id, so
+    `/events.jsonl` answers 200 with an empty body for ids that were never
+    minted. `assert_forged_request_refused` counts events instead, for exactly
+    that reason. Currently unused; kept for existence checks on endpoints whose
+    404 branch is reachable.
     """
     req = urllib.request.Request(url, method="GET")
     with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -816,7 +820,7 @@ class Flow:
             rows = [json.loads(line) for line in raw.splitlines() if line.strip()]
         except (urllib.error.URLError, OSError) as e:
             return self.c.fail("GET the victim's transcript", str(e))
-        # The forged text MUST still be findable — `kafka_in.py:205` stores the event
+        # The forged text MUST still be findable — `kafka_in.py:208` stores the event
         # "as it actually arrived" under `data.rejected` on purpose, as the forensic
         # record an operator reviews. An earlier revision asserted the text was
         # "nowhere in the transcript", which contradicted that design and failed on a
