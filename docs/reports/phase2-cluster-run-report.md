@@ -66,7 +66,7 @@ and a tolerable signing cost, and neither had a number until this run.
 | Turn 2, warm | — | **4–10 s** | same pod still up |
 | Signed / total events | — | **2 / 6** | terminal-only by policy, §4.4 |
 | Scale back to zero | ~31 s (phase 1) | consistent | `cooldownPeriod: 30` |
-| `sign_into` per call | 190–230 ms (phase 1 §9) | **123 ms median**, n=9 | **laptop, not cluster** — M-series host |
+| `sign_into` per call | 222 ms sign / 227 ms verify (phase 1 §9); ~190–230 ms band across rigs (notes §4 W2) | **123 ms median**, n=9 | **laptop, not cluster** — M-series host |
 
 Two notes on reading these:
 
@@ -75,8 +75,9 @@ wake is `group.initial.rebalance.delay.ms`. Quoting the wake time without naming
 therefore meaningless, and the demo doc now says so rather than picking a favourable figure.
 
 **The 123 ms signing cost is a laptop measurement and does not belong on a cluster slide.**
-It is faster than Phase 1's 190–230 ms band for the same operation, which is consistent with
-a faster host rather than with any change to the code. No per-signature figure was isolated
+It is faster than the pure-Python band of ~190–230 ms across rigs for the same operation —
+Phase 1 §9 measured 222/227 ms, and a re-run on faster hardware gave 190/198 ms — which is
+consistent with a faster host rather than with any change to the code. No per-signature figure was isolated
 in-cluster — see §5.
 
 ## 3. Deltas from the design
@@ -117,9 +118,11 @@ rather than a state, and each reported success while the system did something el
 
 - **Symptom:** `k8s_deploy.py` reported `applied with 2 kid(s)`, and the ConfigMap in the
   cluster contained `{}`.
-- **Root cause:** the `kind-signed` overlay carries a committed placeholder keyset of `{}`,
-  which was applied *after* the real one and silently replaced it. The report was true of
-  what the script sent and false of what the cluster held.
+- **Root cause:** `k8s/base/keyset-configmap.yaml` is committed holding `{}` — deliberately,
+  so that no public key lives in the repository — and `base/kustomization.yaml` lists it, so
+  the `kind-signed` overlay inherits it and `apply -k` wrote it *after* the real keyset,
+  silently replacing it. The report was true of what the script sent and false of what the
+  cluster held.
 - **Fix:** `d5fd9f4`.
 
 ### 4.3 ENFORCING with zero approved kids starts silently
@@ -167,13 +170,19 @@ rather than a state, and each reported success while the system did something el
   against. **Two of this session's own assertions were wrong in the same way.**
 - **Fix:** `f988fd9`.
 
-### 4.7 Act 6 matched a generic phrase across a 400-line window
+### 4.7 Act 6 lost its own refusal in a 400-line log window
 
-- **Symptom:** intermittent pass/fail on a correctly-refusing runner.
-- **Root cause:** the log assertion matched a phrase that appears in ordinary operation, over
-  a wide `--tail` window, so it could match an unrelated line.
-- **Fix:** `9d5f5fd` — match the forgery's own `corr=forged-<ts>` with `--tail=-1`. **This
-  commit postdates the last flow run and has not itself been verified on a cluster**; see §5.
+- **Symptom:** the beat reported the forged request as ACCEPTED on a run where the runner had
+  refused it — the two assertions below it (no transcript, back to zero) both passed. The
+  identical check had passed in 5 s on the previous run against the same code.
+- **Root cause:** the assertion searched `--tail=400` for the generic phrase `rejecting
+  unsigned/badly-signed request`. When T5.6 runs first it drops ~64 stale requests, one log
+  line each, so the refusal **scrolled out of the window** and the beat found nothing. A
+  generic phrase was the second half of the problem: with several forgeries on the topic, the
+  first match could be a previous run's.
+- **Fix:** `9d5f5fd` — match the forgery's own `corr=forged-<ts>`, unique per run, and read
+  with `--tail=-1` (kubectl's documented "all lines") instead of a fixed window. **This commit
+  postdates the last flow run and has not itself been verified on a cluster**; see §5.
 
 ### 4.8 The lesson that outranks the individual bugs
 

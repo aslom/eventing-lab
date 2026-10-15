@@ -8,8 +8,9 @@ thing you hold while recording.
 **Read this first:** every act below is marked **🟢 DOABLE TODAY**, **🟡 PARTIAL**, or
 **🔴 NEEDS WORK**. The marks are the point of the document. **Seven of the eight acts are
 recordable**, all seven now verified against a Kind cluster rather than scripted-and-hoped;
-one needs code that does not exist and is cut. Two further beats sit below the acts: one built
-but without a stage, one needing SPIRE.
+one needs code that does not exist and is cut. Four further beats sit below the acts: two that
+ran on the cluster and are recordable (§8.1, §8.2), one built but without a stage, one needing
+SPIRE.
 
 Nothing here is narrated over a system that does not do it. Where a beat is cut, the script
 says what to say instead — per the talk's own thesis, an unchecked control claim is the
@@ -174,8 +175,8 @@ will not act on it unless the signature verifies against an approved key.
    structurally impossible for KEDA to scale away a pod mid-stream. Proven by accident: a
    run sat in 429 retry backoff for 300 s and replicas stayed ≥ 1 for all 300 s.
 2. **Only terminal events are signed, deliberately.** Ed25519 here is pure Python at
-   **123 ms median** per `sign_into` (n=9, M-series laptop; Phase 1 measured 190–230 ms on
-   slower hardware), and `emit()` runs per `stdout` frame — signing every frame would add
+   **123 ms median** per `sign_into` (n=9, M-series laptop; Phase 1 §9 measured 222/227 ms — the
+   pure-Python band across rigs is ~190–230 ms), and `emit()` runs per `stdout` frame — signing every frame would add
    tens of seconds to a chatty run. The ratio in this demo is **2 signed of 6 events**. So
    the signature proves **who finished a run, not what it said along the way.** Say both the
    ratio and the limit out loud; someone will ask, and "signed events" without the ratio
@@ -529,7 +530,7 @@ held: EventRunner refused unsigned requests, correctly, including the system's o
 traffic. **It failed closed, silently, while every indicator was green.** And three of my own
 assertions then accused that correctly-working control of being bypassed.
 
-So the taxonomy gets a fourth entry the abstract does not promise: **a false alarm about a
+So the taxonomy gets a fifth entry the abstract does not promise: **a false alarm about a
 control is its own category of failure.** It consumes exactly the attention a real breach
 would need, and it is produced by the verification tooling — which is therefore not exempt
 from needing verification. For a talk called "The Seams Are the Trap", admitting that the
@@ -556,7 +557,7 @@ ykt1 and the cycle back to zero is 30–31 s, before the agent does any work.
 | 9–13 | Seams 1 + 4: the wake contract and bound audit. Lead with the lag insight |
 | 13–17 | Seams 2 + 3: scope drift and delivery. Name what they do **not** prove |
 | 17–21 | **Demo** (recorded, narrated) — acts 1–7, plus §8.1 if time. Hard stop at 4 min |
-| 21–25 | **The claims that did not hold** (spec §8's thirteen, plus this run's six) — the differentiator |
+| 21–25 | **The claims that did not hold** (spec §8's thirteen, plus this run's seven) — the differentiator |
 | 25–27 | What's next: the SPIRE upgrade path with its obstacles; Phase 3 tenancy as design |
 | 27–30 | Questions |
 
