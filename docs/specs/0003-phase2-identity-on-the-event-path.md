@@ -687,8 +687,13 @@ is the claim that it substitutes for a cluster. Add to the three rules below:
   back from the pod, not the ConfigMap you just applied. Every indicator in that
   run was green while the system refused all traffic, including its own.
 
-The cheap version is the right first step. For `eventing/`, a venv and a few lines
-driving the real function beat *reading* it:
+Reading the code is not enough, and neither is the test suite: every one of the
+thirteen coexisted with a passing suite, because the tests exercised the
+configuration the claim was true in.
+
+~~The cheap version is enough.~~ **The cheap version is the right first step.** For
+`eventing/`, a venv and a few lines driving the real function beat ~~a cluster~~
+*reading* it:
 
 ```bash
 cd eventing && python3 -m venv .venv && .venv/bin/pip install -q -e .

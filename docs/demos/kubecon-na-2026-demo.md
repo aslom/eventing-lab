@@ -123,13 +123,28 @@ on screen and what to say over it.
   overlay and was closed without one being built, so the patches have to be reapplied after
   *every* `k8s_deploy.py` invocation — it resets both Deployments to `:dev` and `Always`.
 
-  Then **verify the running image actually contains the signing code**. This is the step
+  Then **verify the running images actually contain the signing code**. This is the step
   whose absence caused the evening above, and preflight still does not do it
-  ([eventing-lab#10](https://github.com/rossoctl/eventing-lab/issues/10)):
+  ([eventing-lab#10](https://github.com/rossoctl/eventing-lab/issues/10)). The two
+  services need different checks: the stale image that evening was EventBridge's — it is
+  up throughout, so check it in place — while EventRunner sits at 0 replicas until there
+  is lag, so before the flow there is no pod to exec into and its image has to be
+  checked directly, under the same `--tag` the deploy used:
 
   ```sh
-  kubectl -n kev1 exec deploy/eventrunner -- sh -c 'grep -rc "request signing" /app | head -1'
+  # EventBridge is up throughout, and its image is the one that carries the signing banner.
+  kubectl -n kev1 exec deploy/eventbridge -- grep -rl 'request signing' /app/eventbridge
+  # EventRunner sits at 0 replicas until there is lag, so there is no pod to exec into:
+  # check the image itself, under the same --tag the deploy used.
+  kubectl -n kev1 run imgcheck --rm -i --restart=Never --quiet \
+    --image quay.io/aslomnet/rossoctl-eventrunner:local1 \
+    --command -- grep -rl 'request verification uses' /app/eventrunner
   ```
+
+  Both must print a path. Once the runner has woken, its startup banner
+  (`[eventrunner] request verification uses …`) is the stronger check anyway — it
+  reports what the process *loaded* rather than what the image contains, the same
+  written-vs-read distinction the report's §4.4 turns on.
 
 **Grab the runner logs while the pod is alive.** It scales to zero about 30 s after the work
 drains, and `kubectl logs -l` then returns `No resources found`. Run this in a second terminal
@@ -626,7 +641,7 @@ Before you consider the demo recordable:
 - [ ] Capture the **on-cluster signing cost** — still laptop-only at 123 ms; either measure it or stop breaking it out of the wake number
 - [ ] Confirm **which cluster** every number on every slide came from, and name the `group.initial.rebalance.delay.ms` wherever a wake time appears
 - [ ] Start the **port-forward** before recording, and use `--public-url` — the ingress drops ~40% of POSTs ([#9](https://github.com/rossoctl/eventing-lab/issues/9))
-- [ ] Verify the running image **contains the signing code**, not just that it pulled ([#10](https://github.com/rossoctl/eventing-lab/issues/10)) — `grep -c "request signing"` inside the pod
+- [ ] Verify the running image **contains the signing code**, not just that it pulled ([#10](https://github.com/rossoctl/eventing-lab/issues/10)) — EventBridge in its pod, EventRunner from the image itself (the §1 commands; the runner has no pod before the flow)
 - [ ] Check the keyset has **2 kids, not `{}`**, after the final deploy ([#12](https://github.com/rossoctl/eventing-lab/issues/12) is why this is not self-announcing)
 - [ ] Start the runner **log capture loop** before the flow — the pod is gone ~30 s after the work drains
 - [ ] Pre-pull images on the node (a cold pull is 5.1 s of the wake at 245 MB)

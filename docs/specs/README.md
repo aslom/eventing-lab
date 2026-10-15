@@ -12,13 +12,13 @@ filenames are dated and descriptive so they never need renaming when numbering s
 This work is phase-structured, so the ID is the phase. Each phase is a **delta over the one
 before it** — read them in order; only Phase 0 is self-contained.
 
-| ID      | Title                                            | Spec                                                                                       | Status                       | Report                                             |
-| ------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------ | ---------------------------- | -------------------------------------------------- |
-| Phase 0 | Local signed-event wake demo (no Kubernetes)     | [`0001-phase0-local-wire-contract.md`](0001-phase0-local-wire-contract.md)                 | Implemented                  | [`phase0-report.md`](../reports/phase0-report.md)  |
-| Phase 1 | KEDA-scaled Kubernetes deployment                | [`0002-phase1-keda-kubernetes.md`](0002-phase1-keda-kubernetes.md)                         | Implemented                  | [`phase1-report.md`](../reports/phase1-report.md)  |
-| Phase 2 | Identity on the event path                       | [`0003-phase2-identity-on-the-event-path.md`](0003-phase2-identity-on-the-event-path.md)   | Accepted                     | [`phase2-cluster-run-report.md`](../reports/phase2-cluster-run-report.md) |
-| Phase 3 | Per-user isolation, declarative agents, triggers | [`0004-phase3-tenancy-agents-triggers.md`](0004-phase3-tenancy-agents-triggers.md)         | Accepted — partly implemented | [`phase3-report.md`](../reports/phase3-report.md)  |
-| Phase 4 | Enrollment, and asking a human for permission    | [`0005-phase4-enrollment-and-permission.md`](0005-phase4-enrollment-and-permission.md)     | Proposed — design only        | —                                                  |
+| ID      | Title                                            | Spec                                                                                       | Status                       | Report                                                                    |
+| ------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------ | ---------------------------- | ------------------------------------------------------------------------- |
+| Phase 0 | Local signed-event wake demo (no Kubernetes)     | [`0001-phase0-local-wire-contract.md`](0001-phase0-local-wire-contract.md)                 | Implemented                  | [`phase0-report.md`](../reports/phase0-report.md)                         |
+| Phase 1 | KEDA-scaled Kubernetes deployment                | [`0002-phase1-keda-kubernetes.md`](0002-phase1-keda-kubernetes.md)                         | Implemented                  | [`phase1-report.md`](../reports/phase1-report.md)                         |
+| Phase 2 | Identity on the event path                       | [`0003-phase2-identity-on-the-event-path.md`](0003-phase2-identity-on-the-event-path.md)   | Implemented — partial        | [`phase2-cluster-run-report.md`](../reports/phase2-cluster-run-report.md) |
+| Phase 3 | Per-user isolation, declarative agents, triggers | [`0004-phase3-tenancy-agents-triggers.md`](0004-phase3-tenancy-agents-triggers.md)         | Accepted — partly implemented | [`phase3-report.md`](../reports/phase3-report.md)                         |
+| Phase 4 | Enrollment, and asking a human for permission    | [`0005-phase4-enrollment-and-permission.md`](0005-phase4-enrollment-and-permission.md)     | Proposed — design only        | —                                                                         |
 
 Two things the status column is deliberately blunt about:
 

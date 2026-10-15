@@ -345,9 +345,12 @@ re-checked 2026-10-09):
 Two beats not in the original commitment also ran, and both are worth stage
 time: **`/continue` after a full scale-to-zero** woke a new pod that resumed the
 conversation's sequence numbering (the clearest evidence that state lives in the
-event log, not the process), and the **replay guard** dropped 64 validly-signed
-but stale requests rather than re-running them — which pre-empts the sharpest
-question the forged-request beat invites.
+event log, not the process), and the **replay guard** dropped 64 replayed
+requests rather than re-running them — which pre-empts the sharpest
+question the forged-request beat invites. The 64 are replays of accepted
+requests, so their signatures are genuine — but the age guard runs before the
+signature check and dropped them as stale without verifying it: freshness is a
+separate control from origin.
 
 **The decision that shapes everything else: two of the four seams name SPIRE,
 and there is no SPIRE.** Wiring it is not a flag flip — it requires an
