@@ -895,9 +895,17 @@ class Flow:
             return
         # The pod has to wake before it can refuse, so wait for the refusal rather than
         # sleeping a fixed interval: the wake is 1-5s and the poll adds more.
+        # Match on THIS forgery's correlation id, and read the whole log rather than
+        # the last 400 lines. Both matter: `tail=400` plus a generic phrase made this
+        # assertion lose a refusal that had happened. When T5.6 runs first it drops
+        # ~64 stale requests, each logging a line, so the refusal scrolled out of the
+        # window and the beat reported "the request was ACCEPTED" about a request the
+        # runner had correctly refused — while the two checks below it still passed,
+        # proving no agent ran. A unique id cannot collide with another stage's output.
+        needle = f"rejecting unsigned/badly-signed request corr={corr}"
         seen = wait_for(
-            lambda: "rejecting unsigned/badly-signed request" in (
-                self.k.logs("deploy/eventrunner", namespace=self.ns, tail=400) or ""),
+            lambda: needle in (
+                self.k.logs("deploy/eventrunner", namespace=self.ns, tail=-1) or ""),
             timeout=180, interval=5)
         self.c.expect(bool(seen),
                       f"the runner refused it and said why ({seen.elapsed_s:.0f}s) — "
@@ -905,9 +913,12 @@ class Flow:
                       "no refusal in the runner log. If the pod never woke, KEDA did "
                       "not see the lag; if it woke and said nothing, the request was "
                       "ACCEPTED and that is the bug this beat exists to catch")
-        logs = self.k.logs("deploy/eventrunner", namespace=self.ns, tail=400) or ""
+        logs = self.k.logs("deploy/eventrunner", namespace=self.ns, tail=-1) or ""
         for line in logs.splitlines():
-            if "rejecting unsigned" in line:
+            # `needle`, not "rejecting unsigned": with several forgeries on the topic
+            # the first match could be a previous run's, which would show the operator
+            # a refusal that is not the one just demonstrated.
+            if needle in line:
                 self.c.log(f"  {line.strip()[:160]}")
                 break
         # The outcome, not the verdict: no agent ran for this correlation.
