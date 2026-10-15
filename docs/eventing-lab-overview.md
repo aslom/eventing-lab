@@ -8,9 +8,15 @@ cited to the document that measured them.
 someone changing the code. For that, read
 [`docs/README.md`](README.md) and follow its reading order.
 
-**Status date:** 2026-10-09. The implementation status in §4 and the KubeCon
+**Status date:** 2026-10-15. The implementation status in §4 and the KubeCon
 figures in §5 expire; §§1–3 do not. Where a number appears here it is quoted
 from the document that measured it, named inline.
+
+**Changed since 2026-10-09:** the signed event path has now run end to end on a
+cluster — the single item §4 and §5 were previously blocked on. 54 of 55
+assertions passed; seven bugs surfaced, every one of them reachable only on a
+cluster. §4, §5 and §6 are re-checked against
+[`reports/phase2-cluster-run-report.md`](reports/phase2-cluster-run-report.md).
 
 ---
 
@@ -41,7 +47,7 @@ hand, and — see §5 — it is what makes the SPIRE upgrade path expensive.
 |---|---|---|
 | **0** | The wire contract: CloudEvents, correlation and session identity, per-conversation ordering | Built; laptop only |
 | **1** | Kubernetes and KEDA: scale-to-zero, agent groups | Built; measured on two clusters |
-| **2** | Identity on the event path: who submitted, which agent answered | Wired; **13 control claims found false in review** |
+| **2** | Identity on the event path: who submitted, which agent answered | Wired and **run on a cluster** (54/55); 13 control claims found false in review, 7 more bugs found by the run |
 | **3** | Per-user isolation, declarative agents, event triggers | **Partial** — rollout steps 1–4, plus T5, T13 and T22; the rest is design |
 | **4** | Enrollment and human-in-the-loop approval | **Design only**; its core mechanism is measured |
 
@@ -189,6 +195,28 @@ That produced **five questions to ask of any control claim before it ships**
 4. **Can an attacker choose the input the check reads?** Including by *omitting* it.
 5. **What does the claim become one release from now?**
 
+**A sixth question, added by the cluster run (2026-10-14).** The five above are
+all answerable by reading code and running its decision functions. Seven bugs
+were then found that none of them reaches, because each was about the gap
+between a *claim* and a *deployment* rather than between a claim and a code
+path:
+
+6. **Is the thing you checked the thing that is running?** A preflight check
+   confirmed the image was *pullable*, not that it contained the signing code.
+   A deploy confirmed the keyset ConfigMap was *written*, not that any process
+   had read it — it is a volume mount loaded once at startup, so the pod kept
+   enforcing against an empty set.
+
+Stated generally: **each check verified an intent — what the tooling sent —
+rather than a state, what the cluster held.** Four indicators read green while
+the system refused all traffic, including its own
+([`reports/phase2-cluster-run-report.md`](reports/phase2-cluster-run-report.md) §4).
+The control itself held throughout and failed closed; what failed was the
+evidence that it was working. Three of the run's own assertions then accused
+that correctly-working control of being bypassed — so **a false alarm about a
+control is its own category of failure**, and the verification tooling is not
+exempt from the six questions.
+
 ### Phase 3 — per-user isolation (partially built)
 
 A raw `submitter` cannot be a tenancy key. It fails to name a Kafka topic, a
@@ -257,7 +285,7 @@ cryptographic control.
 | KEDA scale-to-zero on consumer lag, graceful drain, arbitrary-UID portability | Built, measured on OpenShift and Kind |
 | Agent groups: fan-out, tracked fan-in, two notifications | Built, measured at 100 agents |
 | GitHub device-flow sign-in, approved-user list, `401`/`403`, `ce_submitter` | Built; **off by default** — a deployed instance with no configuration is open |
-| Event signing and verification, `kid` keyset, group-event pinning | Built; all signing variables default off; **never run end to end on a cluster** |
+| Event signing and verification, `kid` keyset, group-event pinning | Built and **run end to end on a cluster** with enforcement on both directions (54/55); all signing variables still default off |
 | Per-user tenancy keys, per-user stores, ownership index, declarative `AgentSpec` | **Partial.** `EB_TENANCY_MODE` defaults to `single`, reproducing Phase 2 exactly |
 | Owner-scoped reads, transcript auth, per-user ntfy, triggers, fetched skills, Kafka ACLs | Design only |
 | Enrollment, human-in-the-loop approval | Design only |
@@ -274,12 +302,27 @@ read routes to the owning tenant's store, but nothing checks the caller is that
 owner. The flag is deliberately environment-only — a committed config file that
 could flip it is "a way to get per-user isolation half-enabled by accident".
 
-**Signing is implemented but unproven in deployment.** The cryptography is
-checked against the RFC's own test vectors and the canonicalisation is
-injective, but the signed path has never run end to end on a cluster, and
-enforcement is currently advisory — `EB_REQUIRE_RESPONSE_SIGNATURE` defaults to
-`false`, and [examples#885](https://github.com/rossoctl/examples/issues/885) means a
-rejected response can still end a batch even when it is `true`.
+**Signing is now proven in deployment, and the proving is what found the
+bugs.** The cryptography was already checked against the RFC's own test vectors
+and the canonicalisation is injective. On 2026-10-14 the signed path also ran
+end to end on a Kind cluster with `ER_REQUIRE_SIGNATURE` and
+`EB_REQUIRE_RESPONSE_SIGNATURE` both `true`: a signed request woke the runner, a
+forged response was refused and inert, a forged *request* was refused, and the
+audit trail separated bound chains from orphaned ones
+([`reports/phase2-cluster-run-report.md`](reports/phase2-cluster-run-report.md)).
+
+Three qualifications travel with that, and they are the reason the row above
+still says "default off":
+
+- **Enforcement is opt-in.** Both flags default to `false`, so an unconfigured
+  deployment verifies nothing. The run turned them on deliberately via the
+  `kind-signed` overlay.
+- **No in-cluster signing cost was measured.** The only per-signature figure is
+  123 ms median on an M-series laptop (n=9). The on-cluster wake is 2.1–4.2 s,
+  but 3000 ms of that is the broker's `group.initial.rebalance.delay.ms`, so
+  signing is not separable from it without a dedicated measurement.
+- **Mock agent mode throughout.** No real `claude` run was exercised; the
+  model-API budget is exhausted.
 
 ## 5. The KubeCon NA 2026 commitment
 
@@ -291,10 +334,23 @@ re-checked 2026-10-09):
 | Beat | State |
 |---|---|
 | D1 zero agent replicas | Backed — KEDA `minReplicaCount: 0`, measured |
-| D2 signed task event → agent wake | Partial — JWS is real, never run on a cluster |
-| D3 blocked egress on a wrong-scope call | **No implementation at all** |
-| D4 completion bound to the wake event | Backed — `ce_causationid` |
+| D2 signed task event → agent wake | **Backed** — run on a cluster, wake 2.1–4.2 s |
+| D3 blocked egress on a wrong-scope call | **Cut** — no implementation, and unbuildable on Kind: kindnetd does not enforce `NetworkPolicy`, so a policy applies cleanly and changes nothing |
+| D4 completion bound to the wake event | Backed — `ce_causationid`, verified on a cluster |
 | D5 scale to zero when idle | Backed — 30–31 s measured |
+| — forged *response* refused and inert | **Backed** — verified on a cluster |
+| — forged *request* refused (the wake itself) | **Backed** — verified on a cluster |
+| — audit trail, bound vs orphaned chains | **Backed** — 12 bound chains; the forgery shows as orphaned |
+
+Two beats not in the original commitment also ran, and both are worth stage
+time: **`/continue` after a full scale-to-zero** woke a new pod that resumed the
+conversation's sequence numbering (the clearest evidence that state lives in the
+event log, not the process), and the **replay guard** dropped 64 replayed
+requests rather than re-running them — which pre-empts the sharpest
+question the forged-request beat invites. The 64 are replays of accepted
+requests, so their signatures are genuine — but the age guard runs before the
+signature check and dropped them as stale without verifying it: freshness is a
+separate control from origin.
 
 **The decision that shapes everything else: two of the four seams name SPIRE,
 and there is no SPIRE.** Wiring it is not a flag flip — it requires an
@@ -306,11 +362,18 @@ it is where the §1.1 constraint stops being free.
 The recommendation on record is to **reframe SPIRE as the named upgrade path**
 rather than fake a fourth seam on stage, on the grounds that "overselling the
 guarantee in a talk about overselling guarantees is the one failure mode with no
-recovery". The MVP that makes the talk honest and demo-backed is roughly two
-days of work and buys this line:
+recovery". The MVP that makes the talk honest and demo-backed was estimated at
+roughly two days of work, and buys this line:
 
 > Three seams delivered and demo-backed. One named as the upgrade path, with its
 > obstacles.
+
+**That line is now earned rather than planned.** The MVP's blocking item was
+running the signed overlay end to end; it ran on 2026-10-14. What remains before
+recording is a re-run for a clean sweep — four commits merged after the run
+postdate it, one of which changes deploy behaviour rather than an assertion —
+plus an in-cluster signing figure if a number is wanted on the slide. Tracked as
+[eventing-lab#14](https://github.com/rossoctl/eventing-lab/issues/14).
 
 Per the same document, the demo should be **pre-recorded and narrated live**:
 the real-agent path has been blocked on an exhausted model-API budget, a 429 on
@@ -336,6 +399,22 @@ are where this system fails, and the two services fail in *opposite* directions.
 Phases 3 and 4 add controls of exactly the same shape, so the five questions need
 to be a gate on new work rather than a retrospective on old work.
 
+**The cluster run sharpened that, and widened it.** Seven more bugs, none
+reachable by the test suite or by reading code, because all seven were about the
+deployment rather than the logic: an image without the signing code in it, a
+keyset written but never read by the running process. The documentation was not
+the weak link this time — **the tooling was**, and it reported green throughout
+while the system refused all traffic. So the gate needs the sixth question in §3
+as well: *is the thing you checked the thing that is running?* Six of the seven
+are fixed; the seventh is [#12](https://github.com/rossoctl/eventing-lab/issues/12),
+a service that starts happily while enforcing against zero approved keys. The
+missing *checks* are filed separately —
+[#10](https://github.com/rossoctl/eventing-lab/issues/10) (assert the image
+contains the code being enforced, not merely that it pulls) and
+[#11](https://github.com/rossoctl/eventing-lab/issues/11) (a selftest that
+reported a working path as broken, and cost an hour) — because a missing check is
+a different defect from the bug it failed to catch.
+
 **Three decisions outstanding.**
 
 1. **SPIRE** — reframe as upgrade path, or wire a minimal version. Blocks the
@@ -359,6 +438,7 @@ to be a gate on new work rather than a retrospective on old work.
 | The wire contract that must not change | [`specs/0001-phase0-local-wire-contract.md`](specs/0001-phase0-local-wire-contract.md) |
 | Running it, in any of four environments | [`demos/phase1-demo.md`](demos/phase1-demo.md) |
 | Identity, and the thirteen findings | [`specs/0003-phase2-identity-on-the-event-path.md`](specs/0003-phase2-identity-on-the-event-path.md) §8 |
+| What the signed path did on a cluster, and the seven bugs it took | [`reports/phase2-cluster-run-report.md`](reports/phase2-cluster-run-report.md) |
 | Writing a claim about a control, in any phase | [`specs/0003-phase2-identity-on-the-event-path.md`](specs/0003-phase2-identity-on-the-event-path.md) §8.5 |
 | What the tenancy work has actually built, and what `multi` does not do | [`reports/phase3-report.md`](reports/phase3-report.md) §5 |
 | The talk: status, plan, slide shape | [`notes/kubecon-na-2026.md`](notes/kubecon-na-2026.md) |
