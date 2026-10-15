@@ -1,7 +1,7 @@
 # DESIGN — Phase 2: identity on the event path
 
-Version: 2.0 — October 2026 <!-- revision 2: §8 records 13 control claims the docs review found unsupported -->
-Status: Accepted <!-- signing is deployable; §8 lists the claims that do not yet hold -->
+Version: 2.1 — October 2026 <!-- revision 2: §8 records 13 control claims the docs review found unsupported; revision 2.1: §8.6 — the cluster run found a class the venv harness cannot reach -->
+Status: Accepted <!-- signing is deployable and has now run on a cluster; see ../reports/phase2-cluster-run-report.md. §8 lists the claims that do not yet hold -->
 Scope: **delta over `../specs/0002-phase1-keda-kubernetes.md`.** Read that first. This document records
 only what changes when the demo stops trusting whoever can reach it.
 
@@ -657,12 +657,38 @@ survives the fix for examples#885 whenever enforcement is off, which is the defa
 
 ### 8.6 Run it — reading the code is not enough
 
-Reading the code is not enough, and neither is the test suite: every one of the
-thirteen coexisted with a passing suite, because the tests exercised the
-configuration the claim was true in.
+**Status, 2026-10-15: the venv harness below is necessary and not sufficient, and
+the sentence "the cheap version is enough" is wrong as a general claim.** It is
+right for the thirteen: every one was a *decision function reaching the wrong
+verdict for a given configuration*, and a venv reproduces that exactly. On
+2026-10-14 the signed path ran on a Kind cluster for the first time and found
+**seven more bugs, none of which a venv can reach**, because none of them was
+about a decision function. They were about the gap between the artifact under
+test and the artifact running
+([`../reports/phase2-cluster-run-report.md`](../reports/phase2-cluster-run-report.md) §4):
 
-The cheap version is enough. For `eventing/`, a venv and a few lines driving the real
-function beat a cluster:
+- the image did not contain the signing code — `handlers.py` imports
+  `eventrunner.agentspec` and the Dockerfile never `COPY`ed it, and separately
+  `imagePullPolicy: Always` replaced a `kind load`ed image with a stale tag;
+- the keyset ConfigMap was written correctly and **never read**: it is a volume
+  mount and `keyset.load_if_set` runs once at startup, so a pod scheduled while
+  the placeholder `{}` was in place enforced against zero keys for its whole
+  life, and re-deploying fixed the ConfigMap without restarting the process;
+- three of the *assertions* were themselves wrong, and accused a
+  correctly-working control of being bypassed.
+
+So the rule generalises: **a venv proves a decision; only a deployment proves a
+control.** Both are needed, and in that order — the venv is still the cheap first
+pass, and the thirteen are evidence that skipping it is expensive. What changed
+is the claim that it substitutes for a cluster. Add to the three rules below:
+
+- **Check that the artifact you tested is the artifact running.** Assert a marker
+  in the image, not that the image pulled; read the service's own startup line
+  back from the pod, not the ConfigMap you just applied. Every indicator in that
+  run was green while the system refused all traffic, including its own.
+
+The cheap version is the right first step. For `eventing/`, a venv and a few lines
+driving the real function beat *reading* it:
 
 ```bash
 cd eventing && python3 -m venv .venv && .venv/bin/pip install -q -e .

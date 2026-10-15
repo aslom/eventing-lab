@@ -6,7 +6,8 @@ committed to show, the gap between that and the code, the plan to close it, and 
 slide/demo shape that fits 30 minutes.
 
 **If you are picking this up to do the work:** §5 is the MVP — four items, ~two days,
-and the honest talk they buy. §4 is the full plan it was cut from.
+and the honest talk they buy. §4 is the full plan it was cut from. **M2, the blocking
+item, landed 2026-10-14** (§2.6); what is left of it is eventing-lab#14.
 
 This file is the reference other analyses should cite. It is deliberately specific
 about what is **not** done, because the talk's own thesis is that unchecked control
@@ -23,6 +24,7 @@ Read alongside:
 | Identity on the event path, **and §8's thirteen findings** | [`../specs/0003-phase2-identity-on-the-event-path.md`](../specs/0003-phase2-identity-on-the-event-path.md) |
 | Per-user isolation, `AgentSpec`, triggers (design only) | [`../specs/0004-phase3-tenancy-agents-triggers.md`](../specs/0004-phase3-tenancy-agents-triggers.md) |
 | Measured results, what is blocked | [`../reports/phase1-report.md`](../reports/phase1-report.md) |
+| **The signed path on a cluster, and the seven bugs it took** | [`../reports/phase2-cluster-run-report.md`](../reports/phase2-cluster-run-report.md) |
 
 ---
 
@@ -65,8 +67,8 @@ tracks each one separately.
 | # | Beat | Backed by |
 |---|---|---|
 | D1 | zero agent replicas | ✅ KEDA `minReplicaCount: 0`, measured |
-| D2 | signed task event → agent wake | 🟡 JWS real and enforced; the demo can now drive it (eventing-lab#2), but **the run has not happened** |
-| D3 | blocked egress on a wrong-scope call | ❌ **no implementation at all** |
+| D2 | signed task event → agent wake | ✅ JWS real and enforced; ~~the run has not happened~~ **ran on a cluster 2026-10-14**, wake 2.1–4.2 s (`../reports/phase2-cluster-run-report.md`) |
+| D3 | blocked egress on a wrong-scope call | ❌ **no implementation at all** — and **cut**, not deferred: kindnetd does not enforce `NetworkPolicy`, so a policy applies cleanly and changes nothing (§4/W3, M3) |
 | D4 | completion bound to the wake event | ✅ `ce_causationid` |
 | D5 | scale to zero when agents are idle | ✅ measured, 30–31 s back to zero with `cooldownPeriod: 30` |
 
@@ -80,8 +82,8 @@ particular are **not** what §2.1's seam rows were previously assessed against.
 |---|---|---|
 | **R1** | EventRunner does **not process any event** until an agent SVID is issued and verified — a sidecar reading SVIDs at runtime | ❌ no SPIRE anywhere; the runner reads a seed from a Secret **file** at startup and waits for nothing |
 | **R2** | The sender allowlist changes between submit and wake; the same event is accepted, then refused | 🟡 **enforcement built 2026-10-13** — `ER_ALLOWED_SUBMITTERS` on EventRunner, checked after the signature so `ce_submitter` is an attribute a signature covers; 9 tests. What is missing is a demo *stage* that performs the edit on camera |
-| **R3** | Inject an event into the Kafka **requests** topic; EventRunner refuses it | 🟡 **stage built 2026-10-13** — `assert_forged_request_refused` + `FORGE_REQUEST_SRC`, 6 tests. Like the rest of the signed path, **not yet run against a cluster** |
-| **R4** | A utility listing events in a topic, showing which are signed and chaining results back to their signed wake | ✅ **built** — `scripts/audit_topic.py` + `shared/audit.py`. Five verdicts, so a frame unsigned *by policy* is not reported as a finding; seven chain states, so `bound=False` cannot mean four different things. Runs in-cluster by default, against the deployment's own keyset. Like the rest of the signed path, **not yet run against a cluster** |
+| **R3** | Inject an event into the Kafka **requests** topic; EventRunner refuses it | ✅ **stage built 2026-10-13** — `assert_forged_request_refused` + `FORGE_REQUEST_SRC`, 6 tests. ~~Like the rest of the signed path, not yet run against a cluster~~ **Refused on a cluster 2026-10-14**; the stage's own log assertion was then widened in `9d5f5fd` and that fix is unverified (eventing-lab#14) |
+| **R4** | A utility listing events in a topic, showing which are signed and chaining results back to their signed wake | ✅ **built** — `scripts/audit_topic.py` + `shared/audit.py`. Five verdicts, so a frame unsigned *by policy* is not reported as a finding; seven chain states, so `bound=False` cannot mean four different things. Runs in-cluster by default, against the deployment's own keyset. ~~Like the rest of the signed path, not yet run against a cluster~~ **Ran on a cluster 2026-10-14**: 12 bound chains, the forgery orphaned, summary `signed-ok 29, signed-BAD 2, unsigned 4, unsigned-ok 76, terminals 15 (13 verified)` |
 | **R5** | KEDA scales from zero on task events and back to zero when idle | ✅ measured on two clusters |
 
 Three notes that matter more than the table:
@@ -108,6 +110,11 @@ docstrings — which is `../specs/0003-phase2-identity-on-the-event-path.md` §8
 "nothing can drive `kind-signed`" gap (§2.6). The seam and beat tables above are
 updated; the test figures below are from the original assessment and are the ones to
 re-measure before the talk.
+
+**Refreshed 2026-10-15** for the cluster run of 2026-10-14 — §2.6 is rewritten, and the
+D2/R3/R4 rows above now record a run rather than a plan. The caveat in §8 that "there was
+no cluster access" no longer holds for the signed path; see
+[`../reports/phase2-cluster-run-report.md`](../reports/phase2-cluster-run-report.md).
 
 Test suite at review time: **904 collected**. On CI, 896 passed and 8 skipped; on a
 laptop with the `claude` CLI on `PATH`, 899 passed and 5 skipped — the three extra CI
@@ -249,32 +256,52 @@ Issue eventing-lab#1 also defeats Phase 2 §3.1's capability-URL argument: `GET 
 100 most recent groups without sign-in, and `/v0/groups/{id}/status` lists every member's
 correlation id. For any conversation in a group, the capability is published.
 
-### 2.6 The signed path has never run on a cluster
+### 2.6 The signed path has run on a cluster — 54/55, and seven bugs
 
-`k8s/overlays/kind-signed/` exists and is carefully written. But:
+**Ran 2026-10-14** on Kind + podman (arm64), overlay `kind-signed`, with
+`ER_REQUIRE_SIGNATURE` and `EB_REQUIRE_RESPONSE_SIGNATURE` both `true`. **54 of 55
+assertions passed**, covering every signed beat: the signed wake (D2), a forged
+**response** refused and inert, a forged **request** refused (R3), causation binding (D4),
+and the audit trail separating bound chains from orphaned ones (R4). Full record:
+[`../reports/phase2-cluster-run-report.md`](../reports/phase2-cluster-run-report.md).
 
-- No document records a run of it.
-- ~~`k8s_demo_flow.py --overlay` accepts only `test`, `kind`, `demo` — it **cannot drive
-  `kind-signed`**.~~ **Closed by eventing-lab#2**: the overlay is a `--overlay` choice, and two
-  stages assert the signed wake (D2) and that a forged **response** published from an
-  in-cluster pod is refused.
-- Every signing result is unit-tested only.
-- **The forged-REQUEST path still has no stage.** `ER_REQUIRE_SIGNATURE=true` does
-  refuse an unsigned request (`consume.py` → `verify_request` → `rejected_unsigned`,
-  offset committed, agent never run), but nothing drives it. That is the demo beat the
-  abstract's "the event broker hands off events before signature check" actually names,
-  and it is a different topic and direction from the response-side stage above.
+The items this section previously listed as outstanding, and where they now stand:
 
-**Still true as of 2026-10-12, and the distinction matters for the slide:** the script
-exists, nobody has run it against a cluster. So there is no measured on-cluster figure
-for signing cost or for a wake latency that includes it — §6.1's instruction to say which
-cluster a number comes from applies doubly here, because the honest answer is currently
-"none". The remaining work on this beat is an execution, not a build.
+- ~~No document records a run of it.~~ **The report does.**
+- ~~`k8s_demo_flow.py --overlay` accepts only `test`, `kind`, `demo`.~~ **Closed by
+  eventing-lab#2**: the overlay is a `--overlay` choice.
+- ~~Every signing result is unit-tested only.~~ **No longer true** — the enforcement path,
+  both refusal directions and the audit chain are now observed on a cluster.
+- ~~The forged-REQUEST path still has no stage.~~ **Built and verified**:
+  `assert_forged_request_refused` drove it, the runner refused, no transcript was created
+  and replicas returned to zero. This is the beat the abstract's "the event broker hands
+  off events before signature check" names.
+
+**On-cluster figures, which did not exist before** (and §6.1's rule about naming the
+cluster now matters *more*, not less): KEDA wake **2.1–4.2 s** — of which **3000 ms is the
+broker's `group.initial.rebalance.delay.ms`**, so do not present it as signing overhead;
+pod Ready **+0–3 s**; turn 1 to terminal **2–6 s** cold, **4–10 s** warm; **2 of 6** events
+signed, terminal-only by policy.
+
+**What is still missing** is narrower than before, and tracked as
+[eventing-lab#14](https://github.com/rossoctl/eventing-lab/issues/14): there is **no
+in-cluster per-signature cost** (only 123 ms median on a laptop, n=9), and **55/55 has not
+been observed** because four commits merged after the run postdate it.
+
+**The run's own finding, which is talk material.** Seven bugs surfaced, none reachable by
+the test suite and none by reading code, because all seven were about the deployment rather
+than the logic — an image that did not contain the signing code, a keyset written but never
+read by the running process. **Every one sat behind a green report**, and throughout, the
+control held: the runner refused unsigned requests including the system's own genuine
+traffic. It failed closed, silently, while every indicator was green. Three of the run's own
+assertions then accused that correctly-working control of being bypassed.
 
 This matters because of this repository's own precedent: `../specs/0003-phase2-identity-on-the-event-path.md` §4.4 step 2
 records that the signer/verifier policy mismatch (signing terminals only, verifying
 all-or-nothing) was found **by running against a live broker, never by a unit test** —
-because every test until then used terminal events.
+because every test until then used terminal events. The 2026-10-14 run is the same lesson
+at deployment scale, and §8.6 of that spec is corrected accordingly: a venv harness proves
+a decision, only a deployment proves a control.
 
 ### 2.7 The SPIRE upgrade path does not currently hold
 
@@ -519,11 +546,11 @@ at risk.
 | | Item | Effort | Tracked | Blocks |
 |---|---|---|---|---|
 | **M1** | ~~Fix examples#888, then examples#885~~ — **done** (examples#955, plus examples#956) | ~0.5 d | [examples#895](https://github.com/rossoctl/examples/issues/895) closed | M2 |
-| **M2** | Run `kind-signed` end to end — **script built, run outstanding** | ~1 d | [eventing-lab#2](https://github.com/rossoctl/eventing-lab/issues/2) | the recording |
+| **M2** | ~~Run `kind-signed` end to end~~ — **done 2026-10-14**, 54/55 and seven bugs found | ~1 d est.; ~1 evening actual | [eventing-lab#2](https://github.com/rossoctl/eventing-lab/issues/2) closed; remainder [eventing-lab#14](https://github.com/rossoctl/eventing-lab/issues/14) | the recording |
 | **M3** | Substitute the egress beat | a decision | — | the demo list |
 | **M4** | examples#889 + the honesty pass | ~2 h | examples#889 | — |
 
-M2 is the one that must not slip. M3 is a call to make, not work to schedule.
+M2 was the one that must not slip; it landed 2026-10-14. M3 is a call to make, not work to schedule.
 
 ### M1 — Fix examples#888, then examples#885  *(~0.5 day)* — [examples#895](https://github.com/rossoctl/examples/issues/895)
 
@@ -567,23 +594,30 @@ why.
 
 ### M2 — Run `kind-signed` end to end  *(~1 day, depends on M1)* — [eventing-lab#2](https://github.com/rossoctl/eventing-lab/issues/2)
 
-**The item that must not slip.** It is what converts "we wrote a verifier" into "we ran
-one", and §2.6 is the argument: there is currently no evidence the signed path survives a
-real broker, ~900 passing tests did not catch examples#885 or examples#888, and §4.4 step 2 records that
-the one comparable bug was found against a live broker and by no unit test.
+**Done 2026-10-14 — and it was the item that must not slip for the right reason.** It
+converted "we wrote a verifier" into "we ran one", and the argument in §2.6 held up
+exactly: the signed path had no evidence it survived a real broker, ~900 passing tests had
+not caught examples#885 or examples#888, and §4.4 step 2 recorded that the one comparable
+bug was found against a live broker and by no unit test. **Seven more were, this time.**
 
-- Add `kind-signed` to `k8s_demo_flow.py --overlay`, which today accepts only
-  `("test", "kind", "demo")` and therefore **cannot drive the signed overlay at all**.
-- Two new stages: **a signed wake that verifies**, and **a forged event that is refused**.
-  The second is the money shot and has no script today.
-- Capture the on-cluster signing cost. The measured laptop figure is 222 ms / 227 ms
-  (`../reports/phase1-report.md` §9), ~190–230 ms across re-runs; whatever the cluster
-  gives has to be inside the wake-latency number on the slide, not omitted from it.
-- Update `../reports/phase1-report.md` §8, which still says `ER_REQUIRE_SIGNATURE=true` has
-  no end-to-end run.
+- ~~Add `kind-signed` to `k8s_demo_flow.py --overlay`~~ — done before the run.
+- ~~Two new stages: a signed wake that verifies, and a forged event that is refused.~~ Both
+  built, and both passed on the cluster. A forged **request** stage landed too, which the
+  original plan did not include.
+- **Capture the on-cluster signing cost — NOT done.** Still the only outstanding item, with
+  55/55, in [eventing-lab#14](https://github.com/rossoctl/eventing-lab/issues/14). The
+  laptop figures are 222 ms / 227 ms (`../reports/phase1-report.md` §9) and 123 ms median on
+  a faster host; the cluster wake is 2.1–4.2 s but 3000 ms of it is a broker rebalance
+  delay, so signing is not separable from it by subtraction.
+- ~~Update `../reports/phase1-report.md` §8, which still says `ER_REQUIRE_SIGNATURE=true`
+  has no end-to-end run.~~ Not edited — reports are append-only. The end-to-end run is
+  recorded in its own report instead:
+  [`../reports/phase2-cluster-run-report.md`](../reports/phase2-cluster-run-report.md).
 
-Exit criteria: one command drives zero → signed wake → verified completion → forged event
-refused → zero, with assertions and timings.
+Exit criteria, met: one command drove zero → signed wake → verified completion → forged
+event refused → zero, with assertions and timings. **What it cost:** an evening, and seven
+bugs that were each invisible behind a green local report — the strongest material the week
+produced, written up as the report's §4 and §4.8.
 
 ### M3 — Substitute the egress beat  *(a decision, not a build)*
 
@@ -658,7 +692,7 @@ cluster leaves it at 3000 ms — so pick one for the recorded numbers and say wh
 | Seam | After M1-M4 |
 |---|---|
 | Unbound audit | ✅ closed — `ce_causationid` |
-| Unverified delivery | 🟡 signed and enforced (examples#955, examples#956). The **response** path has a demo stage; the **request** path (inject into the requests topic, runner refuses) does not yet, and the cluster run has not happened |
+| Unverified delivery | ✅ signed and enforced (examples#955, examples#956), and **both directions verified on a cluster 2026-10-14**: the response path and the request path each have a demo stage, and each refused its forgery |
 | Cold-start identity gap | ❌ **not demoed.** The examples#888 asymmetry is a *different* gap and examples#888 is fixed, so it is before/after commentary rather than a beat. The committed beat is "the runner does not process events until its SVID is issued and verified", and there is no SPIRE |
 | Trust-scope drift | 🟡 named, with the deploy-time-allowlist limit stated and §8.3's SPIRE obstacles given |
 
@@ -854,8 +888,16 @@ Six things from the 2026-10-05 review that are not obvious from any single docum
 ### Caveats on the review this document is based on
 
 The code was read and the decision functions were run, but there was **no cluster
-access** — everything stated about cluster behaviour comes from `../reports/phase1-report.md`
+access** — everything stated about cluster behaviour came from `../reports/phase1-report.md`
 rather than from observation. Cluster-dependent claims in §2 should be re-confirmed in M2.
+
+**Carried out, 2026-10-14.** M2 ran the signed path on Kind and the re-confirmation this
+caveat asked for is done: §2.6 now records observation rather than inference. The caveat was
+right to exist — the run found **seven bugs that no amount of reading or decision-function
+testing could reach**, because each was about the deployed artifact rather than the logic
+([`../reports/phase2-cluster-run-report.md`](../reports/phase2-cluster-run-report.md) §4).
+It still applies to anything in §2 about cluster behaviour that the signed-path run did not
+touch, and to §2.7's SPIRE claims, which remain unexercised.
 
 The CNI finding in §8 observation 6 was reached by reading `k8s/kind/kind-cluster.yaml`, not by
 applying a NetworkPolicy to a running Kind cluster and watching it fail to block. That
@@ -872,3 +914,4 @@ been read rather than run. Confirm it before spending anything on either CNI opt
 | 2026-10-05 | Created. Captures the accepted abstract, status against it as of `main`, the SPIRE decision, the W1–W6 plan, and the 30-minute slide/demo shape |
 | 2026-10-05 | Added §5, the M1-M4 MVP cut (~2 days) with sequencing, explicit cuts and the talk it supports. Corrected §4/W3: Kind's default CNI is kindnetd and does not enforce NetworkPolicy, so the `NetworkPolicy` MVP was unbuildable as written — three options tabulated, M3 recommends substituting the examples#888 asymmetry for the egress beat. §7's risk table and §8's observations updated; the 30-minute shape renumbered §5→§6, risks §6→§7, observations §7→§8 |
 | 2026-10-06 | M1 and M2 filed as examples#895 and eventing-lab#2; §5 gains a tracking table |
+| 2026-10-15 | **M2 done.** The signed path ran on Kind 2026-10-14 — 54/55, seven cluster-only bugs, all behind green local reports. §2.6 rewritten from "has never run" to what it measured; D2/R3/R4 and the §5 talk-support table record a run rather than a plan; §5/M2 records what it cost; §8's "no cluster access" caveat marked carried out. Remainder (in-cluster signing cost, a 55/55 sweep) is eventing-lab#14. Note: this log has no 2026-10-12 or 2026-10-13 entries although the body cites both dates — they are not reconstructed here rather than guessed at |

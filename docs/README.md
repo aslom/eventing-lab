@@ -102,7 +102,10 @@ code and were remapped onto the convention above.
 - **Writing a claim about a control, in any phase?**
   [`specs/0003-phase2-identity-on-the-event-path.md`](specs/0003-phase2-identity-on-the-event-path.md) §8.5 for the five questions to ask before it
   ships, then §8.1-§8.3 for what thirteen such claims in this repository got wrong and
-  how. The findings are Phase 2's; the questions are not.
+  how. The findings are Phase 2's; the questions are not. §8.6 then says why a venv
+  harness proves a decision but only a deployment proves a control —
+  [`reports/phase2-cluster-run-report.md`](reports/phase2-cluster-run-report.md) §4 is
+  seven bugs that only a cluster could reach.
 - **Presenting it?** [`specs/0003-phase2-identity-on-the-event-path.md`](specs/0003-phase2-identity-on-the-event-path.md) §2.6 and §3, for what the
   identity controls do _not_ prove — and §8, because four of them promise more than
   the code delivers.
