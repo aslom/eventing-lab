@@ -142,3 +142,48 @@ def load_if_set(path: str | pathlib.Path | None) -> KeySet | None:
     if not path:
         return None
     return load(path)
+
+
+def refusal_if_enforcing_empty(
+    ks: "KeySet | None",
+    *,
+    enforcing: bool,
+    service: str,
+    path: str | pathlib.Path | None,
+    env_var: str,
+) -> str | None:
+    """The message to exit with when enforcement is on and the set is empty, else None.
+
+    An approved set with zero kids admits nothing: `select()` returns None for every
+    kid, so under enforcement every event is refused — including the service's own
+    genuine traffic. There is no deployment that configuration serves, and it is not
+    self-announcing: the startup banner reads `ENFORCING` either way, so the symptom
+    is a system that refuses everything while every indicator is green. That is how
+    an evening went on eventing-lab#2 (see `../docs/reports/phase2-cluster-run-report.md`
+    §4.3), and the refusal here is the fix.
+
+    The policy is not new — it is the one `eventbridge/__main__.py` already applies to
+    a *missing* `EB_SIGNING_KID`, and the comment above both load sites argues for it
+    in general: a service that believes it is enforcing but is not fails silently,
+    while one that will not start says so in `kubectl logs` before it accepts a
+    request. An empty set is the same class of misconfiguration and wider in effect —
+    a missing kid breaks attribution of group events, an empty set breaks everything.
+
+    Two configurations are deliberately left alone, because both are meaningful:
+
+    * **audit only** with an empty set — it admits everything and the banner says so;
+    * **no keyset at all** plus `require` — single-key verification, a different and
+      documented path.
+
+    Returns a string rather than raising so the caller owns the exit, which keeps this
+    testable without catching SystemExit and lets each service name its own variable.
+    """
+    if ks is None or len(ks) or not enforcing:
+        return None
+    return (
+        f"[{service}] {env_var} points at an approved set with 0 kid(s) "
+        f"({path}), and signature enforcement is on. A set with no keys can "
+        f"verify nothing, so every event would be refused — including this "
+        f"system's own. Add the approved public keys, or turn enforcement off "
+        f"to run in audit-only mode."
+    )

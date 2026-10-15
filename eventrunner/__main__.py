@@ -75,6 +75,15 @@ def main() -> int:
     if ks is not None:
         print(f"[eventrunner] request verification uses the approved set "
               f"{cfg.verify_keyset_path} — {len(ks)} kid(s): {', '.join(ks.kids)}")
+        # Zero kids under enforcement refuses every request, our own included, while
+        # the line above reads like a working configuration. Refuse to start instead.
+        if (why := keyset.refusal_if_enforcing_empty(
+                ks,
+                enforcing=cfg.require_signature,
+                service="eventrunner",
+                path=cfg.verify_keyset_path,
+                env_var="ER_VERIFY_KEYSET_PATH")):
+            raise SystemExit(why)
     elif cfg.require_signature:
         print("[eventrunner] request verification uses a single key "
               f"({cfg.verify_key_path or cfg.signing_key_path}); "
