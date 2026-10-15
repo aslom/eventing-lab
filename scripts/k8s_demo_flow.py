@@ -737,20 +737,52 @@ class Flow:
         that the batch did not settle and the genuine answer survived.
         """
         self.c.section("forged event refused — enforcement acts (examples#885)")
-        # A batch of 2 with only ONE prompt submitted, so the group stays OPEN: a forged
-        # `group.completed` has something to end prematurely, which is the whole point.
+        # The beat needs a group that is OPEN but already holds one GENUINE finished
+        # answer: open so a forged `group.completed` has something to end prematurely,
+        # and genuine so there is a real row for the forgery to fail to overwrite.
+        #
+        # Built in two calls rather than one, because one cannot express it. An earlier
+        # revision posted `expected: 2` together with a single prompt, which
+        # `eventbridge/handlers.py:325` correctly refuses as contradictory
+        # ("expected=2 contradicts 1 prompts") — so this stage failed on a 400 before
+        # it tested anything about signing. That validation is catching a real operator
+        # error and is not the thing to relax.
+        #
+        # Two prompts with the forgery racing the second member was the other candidate
+        # and is rejected on purpose: in mock mode a turn is ~2s while `_publish_forgery`
+        # must first start a pod, so the batch would reliably settle legitimately before
+        # the forgery landed and this stage would fail for a reason unrelated to
+        # signatures. A demo beat that is intermittently wrong is worse than one that is
+        # missing.
+        #
+        # So: create the group with `expected` and NO prompts (handlers.py:322 allows
+        # exactly that), then add one member through `POST /v0/agents` with `groupid`,
+        # which `handlers.py:283` records via `add_group_member`. Deterministic: the
+        # group is provably 1-of-2 when the forgery is published.
         try:
             status, body = get_json(
                 f"{self.base}/v0/groups", method="POST", timeout=60,
-                body=json.dumps({"label": "forgery-target", "expected": 2,
-                                 "prompts": ["Say ok and nothing else."],
-                                 "max_turns": 1}).encode())
+                body=json.dumps({"label": "forgery-target", "expected": 2}).encode())
         except (urllib.error.URLError, OSError) as e:
             return self.c.fail("POST /v0/groups for the forgery target", str(e))
         gid = (body or {}).get("groupid", "")
         if not self.c.expect(status == 202 and gid,
-                             f"an OPEN group of 2 created with 1 real member -> {gid}",
+                             f"an OPEN group expecting 2 members created -> {gid}",
                              f"status={status} body={body}"):
+            return
+        # Exactly ONE of the two expected members, so the batch cannot settle on its own.
+        try:
+            status, mbody = get_json(
+                f"{self.base}/v0/agents", method="POST", timeout=60,
+                body=json.dumps({"prompt": "Say ok and nothing else.",
+                                 "max_turns": 1, "groupid": gid}).encode())
+        except (urllib.error.URLError, OSError) as e:
+            return self.c.fail("POST /v0/agents for the group's one real member",
+                               str(e))
+        if not self.c.expect(status == 202 and (mbody or {}).get("correlationid"),
+                             f"1 of the 2 expected members submitted -> "
+                             f"{(mbody or {}).get('correlationid')}",
+                             f"status={status} body={mbody}"):
             return
         self.c.log(f"  {self.base}/v0/groups/{gid}")
         done = wait_for(lambda: (self._group_status(gid) or {}).get("terminal", 0) >= 1,

@@ -205,3 +205,58 @@ def test_the_deploy_reads_the_keyset_back_from_the_cluster():
     fn = src.split("def _verify_keyset_landed", 1)[1][:1600]
     assert "get(" in fn and "agents.json" in fn, (
         "_verify_keyset_landed must read ConfigMap data from the cluster")
+
+
+# ---- the forged-RESPONSE beat must build its group through the API ----------
+#
+# `assert_forged_event_refused` needs a group that is OPEN (so a forged
+# `group.completed` has something to settle) and already holds one GENUINE finished
+# answer (so there is a real row the forgery fails to overwrite).
+#
+# An earlier revision asked for that in one call, `expected: 2` alongside a single
+# prompt, which eventbridge/handlers.py:325 refuses as contradictory:
+#
+#     {"error": "expected=2 contradicts 1 prompts"}
+#
+# so the stage died on a 400 having tested nothing about signatures. That validation
+# catches a real operator error and is not the thing to relax. The group is now built
+# in two calls: `expected` with no prompts (allowed by handlers.py:322), then one
+# member via POST /v0/agents with `groupid` (handlers.py:283).
+#
+# Two prompts with the forgery racing the second member was the other candidate and
+# was rejected: in mock mode a turn is ~2s while the forgery must first start a pod,
+# so the batch would reliably settle legitimately first and the stage would fail for
+# a reason unrelated to signatures.
+
+def _demo_flow_src() -> str:
+    return (REPO / "scripts" / "k8s_demo_flow.py").read_text()
+
+
+def _forged_response_stage() -> str:
+    src = _demo_flow_src()
+    start = src.index("def assert_forged_event_refused")
+    return src[start:start + 4000]
+
+
+def test_the_forgery_target_group_is_not_created_with_a_contradictory_payload():
+    """`expected` and `prompts` together must agree, or handlers.py returns 400."""
+    stage = _forged_response_stage()
+    bad = re.search(r'"expected":\s*2[^}]*"prompts"|"prompts"[^}]*"expected":\s*2',
+                    stage, re.DOTALL)
+    assert not bad, (
+        "the forgery-target group sends `expected` together with a differing number "
+        "of prompts; handlers.py:325 rejects that as contradictory and the stage "
+        "fails on a 400 before testing anything about signing")
+
+
+def test_the_forgery_target_group_is_open_and_gains_one_real_member():
+    """Both halves of the setup must be present: an `expected` group, and a member
+    submitted separately with `groupid` so the batch is provably 1-of-2."""
+    stage = _forged_response_stage()
+    assert '"expected": 2' in stage, (
+        "the forgery target must declare `expected` so the group cannot settle on "
+        "its own while one member is outstanding")
+    assert '"groupid": gid' in stage, (
+        "one genuine member must be submitted via POST /v0/agents with `groupid`; "
+        "without a real finished answer three of this beat\'s assertions "
+        "(finished == 1, forged text absent, rejection row) check nothing")
