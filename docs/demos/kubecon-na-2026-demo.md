@@ -116,8 +116,20 @@ on screen and what to say over it.
 - **`--tag`**, because locally-built images are `kind load`ed under a unique tag and are in no
   registry. The base manifests set `imagePullPolicy: Always` and tag `:dev`, so a deploy
   without `--tag` returns to the registry and silently runs stale code — which is how the run
-  spent an evening narrating a signing demo against an image with no signing code in it. See
-  [eventing-lab#9](https://github.com/rossoctl/eventing-lab/issues/9).
+  spent an evening narrating a signing demo against an image with no signing code in it.
+
+  **This is the standing procedure, not a temporary workaround.**
+  [eventing-lab#9](https://github.com/rossoctl/eventing-lab/issues/9) proposed a `kind-local`
+  overlay and was closed without one being built, so the patches have to be reapplied after
+  *every* `k8s_deploy.py` invocation — it resets both Deployments to `:dev` and `Always`.
+
+  Then **verify the running image actually contains the signing code**. This is the step
+  whose absence caused the evening above, and preflight still does not do it
+  ([eventing-lab#10](https://github.com/rossoctl/eventing-lab/issues/10)):
+
+  ```sh
+  kubectl -n kev1 exec deploy/eventrunner -- sh -c 'grep -rc "request signing" /app | head -1'
+  ```
 
 **Grab the runner logs while the pod is alive.** It scales to zero about 30 s after the work
 drains, and `kubectl logs -l` then returns `No resources found`. Run this in a second terminal
