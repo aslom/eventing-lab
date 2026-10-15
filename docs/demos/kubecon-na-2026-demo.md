@@ -6,10 +6,11 @@ which holds the abstract, the status assessment and the reasoning; this document
 thing you hold while recording.
 
 **Read this first:** every act below is marked **🟢 DOABLE TODAY**, **🟡 PARTIAL**, or
-**🔴 NEEDS WORK**. The marks are the point of the document. Three of the eight acts are
-recordable this afternoon against a Kind cluster; four more are scripted and unit-tested but
-blocked behind a single cluster run that has never been executed; one needs code that does not
-exist. Two further beats sit below the acts: one built but without a stage, one needing SPIRE.
+**🔴 NEEDS WORK**. The marks are the point of the document. **Seven of the eight acts are
+recordable**, all seven now verified against a Kind cluster rather than scripted-and-hoped;
+one needs code that does not exist and is cut. Four further beats sit below the acts: two that
+ran on the cluster and are recordable (§8.1, §8.2), one built but without a stage, one needing
+SPIRE.
 
 Nothing here is narrated over a system that does not do it. Where a beat is cut, the script
 says what to say instead — per the talk's own thesis, an unchecked control claim is the
@@ -22,31 +23,38 @@ failure mode with no recovery.
 | Act | Beat | State | What is missing |
 | --- | --- | --- | --- |
 | **1** | Idle at zero | 🟢 **DOABLE TODAY** | — |
-| **2** | Signed task event wakes the agent | 🟡 **PARTIAL** | scripted, never run on a cluster |
-| **3** | Forged *response* refused | 🟡 **PARTIAL** | scripted, never run on a cluster |
+| **2** | Signed task event wakes the agent | 🟢 **DOABLE TODAY** | — |
+| **3** | Forged *response* refused | 🟢 **DOABLE TODAY** | — |
 | **4** | Completion bound to the wake | 🟢 **DOABLE TODAY** | — |
-| **5** | Audit trail over the topic | 🟡 **PARTIAL** | built, never run on a cluster |
-| **6** | Forged *request* refused — the wake itself | 🟡 **PARTIAL** | scripted + tested, never run on a cluster |
+| **5** | Audit trail over the topic | 🟢 **DOABLE TODAY** | — |
+| **6** | Forged *request* refused — the wake itself | 🟢 **DOABLE TODAY** | — |
 | **7** | Back to zero when idle | 🟢 **DOABLE TODAY** | — |
 | **8** | Blocked egress on a wrong-scope call | 🔴 **NEEDS WORK** | **cut it** — see §9 |
-| **—** | Allowlist drift between submit and wake | 🟡 **PARTIAL** | enforcement built; needs a demo stage |
+| **—** | Scale-to-zero then `/continue` (stage 2c) | 🟢 **DOABLE TODAY** | — |
+| **—** | Replay guard drops stale requests (T5.6) | 🟢 **DOABLE TODAY** | — |
+| **—** | Allowlist drift between submit and wake | 🟡 **PARTIAL** | enforcement verified; needs a demo stage |
 | **—** | No SVID, no consumption | 🔴 **NEEDS WORK** | no SPIRE anywhere |
 
-**The single blocking item is a cluster run, not a build.** Acts 2, 3, 5 and 6 are
-implemented and unit-tested; what does not exist is any record of them executing against a
-real broker, and therefore any on-cluster signing figure. Tracked as
-[eventing-lab#2](https://github.com/rossoctl/eventing-lab/issues/2).
+**The blocking item is cleared.** Acts 1–7 ran against a Kind cluster on 2026-10-14 with
+signing enforced in both directions: **54 of 55 assertions passed**, including every signed
+beat. [eventing-lab#2](https://github.com/rossoctl/eventing-lab/issues/2) was "run the signed
+demo against a cluster, which has never been done"; that is now done, and the on-cluster
+numbers it was blocking are in §12. The full write-up, including seven bugs the run exposed,
+is [`../reports/phase2-cluster-run-report.md`](../reports/phase2-cluster-run-report.md).
 
-**Changed 2026-10-13.** Two beats moved off the 🔴 list:
+**Changed 2026-10-14.** The cluster run moved acts 2, 3, 5 and 6 to 🟢 and added two beats
+that were never in this document:
 
-- **Act 6, the forged *request*,** is now built — `assert_forged_request_refused` plus
-  `FORGE_REQUEST_SRC` in `scripts/k8s_demo_flow.py`, with six tests in
-  `tests/test_demo_flow_signed.py` that prove the forged bytes decode as a well-formed
-  request and are refused by the real `verify_request`, and that a genuinely signed one is
-  accepted.
-- **The submitter allowlist (R2)** is implemented: `ER_ALLOWED_SUBMITTERS` on EventRunner,
-  enforced after the signature check, with nine tests. What is still missing is a *demo
-  stage* that shows the drift live — the control exists, the beat does not yet.
+- **Stage 2c — `/continue` after a full scale-to-zero.** The deployment went to zero, a
+  `/continue` woke a *new* pod, and it resumed the conversation's sequence numbering rather
+  than restarting it. This is the strongest single demonstration that the state lives in the
+  event log and not in the process; it is now §8.1.
+- **T5.6 — the replay guard.** Re-submitting captured request bytes dropped **64 stale
+  requests** instead of re-running them. Now §8.2.
+
+Seven bugs surfaced, every one of them reachable only on a cluster and every one sitting behind
+a green local report. They are fixed in [#8](https://github.com/rossoctl/eventing-lab/pull/8), merged
+and are the material for §11 — see the report's §4.
 
 ---
 
@@ -76,18 +84,51 @@ accident — which is itself worth one sentence on stage, because
 present. Say so on the slide. The real-agent path has been blocked on an exhausted LiteLLM
 team budget, so a live run risks a 429 you cannot recover from in front of a room.
 
-**Rehearse and record on the same cluster.** Kind sets
-`group.initial.rebalance.delay.ms: 0` where ykt1 leaves it at 3000 ms, so the timings are
-not comparable. Pick one and say which on the slide.
+**Rehearse and record on the same cluster.** The `group.initial.rebalance.delay.ms` differs
+between rigs, and it dominates the wake number — the 2026-10-14 run measured a 3000 ms delay
+inside its 2.1–4.2 s wake. Pick one cluster and say which on the slide; do not quote a wake
+time measured on the other.
 
 ### The one command
 
 ```sh
-python3 scripts/k8s_demo_flow.py --overlay kind-signed
+python3 scripts/k8s_demo_flow.py --overlay kind-signed \
+  --public-url http://127.0.0.1:18080 --tag local1
 ```
 
 That drives acts 1–7 in order with assertions and timings. The acts below break out what is
 on screen and what to say over it.
+
+**Both extra flags are required for a local Kind run**, and neither was needed before
+2026-10-14:
+
+- **`--public-url` with a port-forward**, because the ingress drops roughly 40% of POSTs.
+  Measured: port-forward 10/10 at 202 in ~10 ms; ingress 5 of 9, with four 10-second
+  timeouts. nginx logged **nothing** for the lost requests, which places the loss in podman's
+  `hostPort` mapping rather than in Kubernetes. Not worth fixing for the demo — but do not
+  discover it while recording. Start the forward first:
+
+  ```sh
+  kubectl -n kev1 port-forward deploy/eventbridge 18080:8080 &
+  sleep 3 && curl -sS -m 5 -o /dev/null -w 'pf ready %{http_code}\n' http://127.0.0.1:18080/healthz
+  ```
+
+- **`--tag`**, because locally-built images are `kind load`ed under a unique tag and are in no
+  registry. The base manifests set `imagePullPolicy: Always` and tag `:dev`, so a deploy
+  without `--tag` returns to the registry and silently runs stale code — which is how the run
+  spent an evening narrating a signing demo against an image with no signing code in it. See
+  [eventing-lab#9](https://github.com/rossoctl/eventing-lab/issues/9).
+
+**Grab the runner logs while the pod is alive.** It scales to zero about 30 s after the work
+drains, and `kubectl logs -l` then returns `No resources found`. Run this in a second terminal
+*before* the flow:
+
+```sh
+while true; do
+  kubectl -n kev1 logs -l app.kubernetes.io/name=eventrunner --prefix --timestamps --tail=-1 2>/dev/null
+  sleep 2
+done | tee /tmp/runner.log
+```
 
 ---
 
@@ -113,10 +154,13 @@ just a total. Point at it — it is what makes the KEDA story concrete rather th
 
 ## 3. Act 2 — a signed task event wakes the agent  (D2 / R-signed)
 
-🟡 **PARTIAL — this is the one that must be run before the recording.**
+🟢 **DOABLE TODAY.** Verified on a cluster 2026-10-14.
 
-The stage is implemented (`assert_signed_wake`, `k8s_demo_flow.py:568`) and unit-tested
-(`tests/test_demo_flow_signed.py`). **It has never run against a cluster.**
+`assert_signed_wake` (`k8s_demo_flow.py:568`), unit-tested in
+`tests/test_demo_flow_signed.py` and now run under enforcement on Kind: the terminal
+`ce_signature` verified and was stored as the `phase=result` row. **Wake measured 2.1–4.2 s**,
+of which 3000 ms is the broker's `group.initial.rebalance.delay.ms` — say the delay out loud
+if you quote the wake, or the number sounds like signing overhead.
 
 **On screen:** the POST, then replicas going 0 → 1, then the transcript streaming, then the
 terminal response with a `kid` and a verified signature.
@@ -131,20 +175,23 @@ will not act on it unless the signature verifies against an approved key.
    structurally impossible for KEDA to scale away a pod mid-stream. Proven by accident: a
    run sat in 429 retry backoff for 300 s and replicas stayed ≥ 1 for all 300 s.
 2. **Only terminal events are signed, deliberately.** Ed25519 here is pure Python at
-   190–230 ms per operation, and `emit()` runs per `stdout` frame — signing every frame
-   would add minutes to a chatty run. So the signature proves **who finished a run, not
-   what it said along the way.** Say that out loud; it is the honest limit and someone will
-   ask.
+   **123 ms median** per `sign_into` (n=9, M-series laptop; Phase 1 §9 measured 222/227 ms — the
+   pure-Python band across rigs is ~190–230 ms), and `emit()` runs per `stdout` frame — signing every frame would add
+   tens of seconds to a chatty run. The ratio in this demo is **2 signed of 6 events**. So
+   the signature proves **who finished a run, not what it said along the way.** Say both the
+   ratio and the limit out loud; someone will ask, and "signed events" without the ratio
+   invites the assumption that all six were.
 
-**⚠️ Before recording:** the wake-latency number on the slide must *include* the signing
-cost, and there is currently no on-cluster figure for it. The 190–230 ms band is laptop-only.
-Capture it during the run and put the cluster number on the slide.
+**⚠️ Before recording:** the signing figure above is a **laptop** measurement. No
+per-signature cost was isolated in-cluster during the 2026-10-14 run, so do not present it
+as a cluster number — either capture one during the recording run, or quote the wake latency
+without breaking out a signing component. See the report's §5.
 
 ---
 
 ## 4. Act 3 — a forged response is refused *and inert*  (the money shot)
 
-🟡 **PARTIAL — scripted, never run on a cluster.**
+🟢 **DOABLE TODAY.** Verified on a cluster 2026-10-14.
 
 Implemented as `assert_forged_event_refused` (`k8s_demo_flow.py:655`). A throwaway pod
 built from the eventrunner image publishes a **correctly encoded but unsigned** terminal
@@ -196,7 +243,9 @@ triggered it. Keep it short; the interesting ones are the open seams.
 
 ## 6. Act 5 — the audit trail  (R4)
 
-🟡 **PARTIAL — built, never run on a cluster.**
+🟢 **DOABLE TODAY.** Verified on a cluster 2026-10-14: **12 BOUND chains**, with the forgery
+showing as ORPHANED/unsigned. The run's summary line was
+`signed-ok 29, signed-BAD 2, unsigned 4, unsigned-ok 76, terminals 15 (13 verified)`.
 
 `scripts/audit_topic.py` + `shared/audit.py`, driven as `assert_audit_trail`
 (`k8s_demo_flow.py:612`). **Run it after the forgery on purpose** — an audit that showed a
@@ -230,7 +279,11 @@ From `keyset.py`'s own docstring, which is better than a paraphrase:
 
 ## 7. Act 6 — a forged *request* is refused  (R3)
 
-🟡 **PARTIAL — built and tested 2026-10-13, never run on a cluster.**
+🟢 **DOABLE TODAY.** The refusal was verified on a cluster 2026-10-14; the stage's own log
+assertion was then fixed in `9d5f5fd`, and **that fix has not been re-run** — if this act
+fails, read the flow log for whether the refusal line is present at all before suspecting the
+runner. The check now matches the forgery's own `corr=forged-<ts>` with `--tail=-1`, so an
+absence means something real.
 
 Implemented as `assert_forged_request_refused`, with the attacker's program in
 `FORGE_REQUEST_SRC`. **This is the beat the abstract literally names** — "the event broker
@@ -290,6 +343,37 @@ edit on camera — see §10.1.
 
 That is also the setup for the seam you are *not* demoing — see §9.
 
+### 8.1 Stage 2c — `/continue` after a full scale-to-zero
+
+🟢 **DOABLE TODAY.** Ran on a cluster 2026-10-14; not previously in this document.
+
+**On screen:** replicas at 0, then a `/continue` on an existing correlation id, then a **new**
+pod coming up and the transcript resuming — with sequence numbers continuing the old
+conversation rather than restarting at 1.
+
+**Say:** the pod that started this conversation no longer exists. The one answering now has
+never seen it. It picks up at the right sequence number because the conversation's state is
+in the event log, not in the process — the agent is a **consumer of the log**, not the owner
+of the session.
+
+**Why this earns its 90 seconds:** it is the claim the whole architecture rests on, and it is
+cheap to show. Put it immediately after act 7, while the deployment is already at zero.
+
+### 8.2 T5.6 — the replay guard
+
+🟢 **DOABLE TODAY.** Ran on a cluster 2026-10-14: **64 stale requests dropped**, none re-run.
+
+**On screen:** captured request bytes re-submitted to the requests topic, and the runner
+dropping them as stale rather than executing them.
+
+**Say:** these are *validly signed* requests — the signature is genuine, because they are the
+real bytes from earlier. A signature proves origin, not freshness. The age guard is what
+stops a replay, and it is a separate control from the signature check.
+
+**The reason to include it:** it pre-empts the sharpest question act 6 invites — "what stops
+me from recording a valid signed request and sending it again?" Answering that before it is
+asked is worth more than the 30 seconds it costs.
+
 ---
 
 ## 9. Act 8 — blocked egress  (D3): **cut it**
@@ -341,9 +425,16 @@ rewritten in flight). Nine tests pin the decisions, including that the signature
 first and that a stale event is still dropped by the age guard rather than reported as an
 allowlist miss.
 
-**What is missing is the stage**, not the control: something that submits as an approved
+**The control is now verified on a cluster** as well as unit-tested — the 2026-10-14 run
+confirmed it is **off by default**, with the startup banner reading `submitter allowlist OFF`.
+That is the correct default and worth one sentence on the slide, because an allowlist that
+defaults to on would refuse the demo's own traffic.
+
+**What is still missing is the stage**, not the control: something that submits as an approved
 user, scales to zero, edits the ConfigMap, and shows the *same* request refused on the next
-wake. Perhaps an hour's work now the enforcement is in.
+wake. Perhaps an hour's work now the enforcement is in. **Do not narrate the drift beat
+without building it** — this is the one remaining place in the deck where a control claim
+would outrun what has been run.
 
 **One caveat to state on the slide.** With `ER_REQUIRE_SIGNATURE=false` the list is still
 enforced but means much less — `ce_submitter` is then whatever the publisher typed, so it
@@ -415,6 +506,41 @@ request side that refused *everything* in the same configuration. Both were docu
 **This section also inoculates you.** Saying the thirteen out loud turns the open bugs from
 something a sharp attendee catches into evidence of rigor. **Go first.**
 
+### 11.1 The seven the cluster run added — "every check verified an intent, not a state"
+
+The thirteen above were found by **reading** the code against its documentation. The
+2026-10-14 cluster run found seven more by **running** it, and they are a different and better
+category of evidence: all seven were unreachable locally, and **every one of them sat behind a
+green report.** One slide, four rows, and it lands without explanation:
+
+| Reported | Actually true |
+| --- | --- |
+| `ALL 40 CHECKS PASSED` | the image contained no signing code |
+| `applied with 2 kid(s)` | the overlay overwrote the keyset with `{}` |
+| `deploy not needed — digest matches` | the keyset was never applied |
+| `response verification ON (ENFORCING)` | zero approved keys, refusing everything |
+
+**The line to say over it:** each of those checks verified an **intent** — what the tooling
+*sent* — rather than a **state**: what the cluster actually *held*. That is the same seam as
+the thirteen, one layer out. The documentation claimed controls the code did not implement;
+the tooling claimed states the cluster was not in.
+
+**Then the part that is harder to say and worth more.** Throughout all of it the control
+held: EventRunner refused unsigned requests, correctly, including the system's own genuine
+traffic. **It failed closed, silently, while every indicator was green.** And three of my own
+assertions then accused that correctly-working control of being bypassed.
+
+So the taxonomy gets a fifth entry the abstract does not promise: **a false alarm about a
+control is its own category of failure.** It consumes exactly the attention a real breach
+would need, and it is produced by the verification tooling — which is therefore not exempt
+from needing verification. For a talk called "The Seams Are the Trap", admitting that the
+trap caught the person who named it is the strongest ending available.
+
+Details and root causes: [`../reports/phase2-cluster-run-report.md`](../reports/phase2-cluster-run-report.md)
+§4. Fixes in [#8](https://github.com/rossoctl/eventing-lab/pull/8); the two not fixed are
+[#10](https://github.com/rossoctl/eventing-lab/issues/10) and
+[#12](https://github.com/rossoctl/eventing-lab/issues/12).
+
 ---
 
 ## 12. Running order and timing
@@ -430,10 +556,17 @@ ykt1 and the cycle back to zero is 30–31 s, before the agent does any work.
 | 5–9 | The four seams, all named — the take-home artifact |
 | 9–13 | Seams 1 + 4: the wake contract and bound audit. Lead with the lag insight |
 | 13–17 | Seams 2 + 3: scope drift and delivery. Name what they do **not** prove |
-| 17–21 | **Demo** (recorded, narrated) — acts 1–7. Hard stop at 4 min |
-| 21–25 | **§8: thirteen claims that did not hold** — the differentiator |
+| 17–21 | **Demo** (recorded, narrated) — acts 1–7, plus §8.1 if time. Hard stop at 4 min |
+| 21–25 | **The claims that did not hold** (spec §8's thirteen, plus this run's seven) — the differentiator |
 | 25–27 | What's next: the SPIRE upgrade path with its obstacles; Phase 3 tenancy as design |
 | 27–30 | Questions |
+
+**What to cut from the demo reel, in order.** All seven acts now run, so the four-minute
+budget is the binding constraint rather than what works: drop §8.2 (replay guard) first,
+then §8.1 (`/continue`), then act 4 (causation — it is one screenshot and can be a slide),
+then compress act 5's audit output to the summary line. Acts 2, 3 and 6 are the talk; keep
+all three, since act 3 forges an **answer** and act 6 forges the **work**, and neither
+substitutes for the other.
 
 **Recording technique:** record at 1× with a visible clock, cut dead air with explicit
 on-screen jumps ("+12 s"), narrate live over it. Keep `watch_topics.py` on screen for the lag
@@ -475,10 +608,15 @@ Lifted from the code's own docstrings, which beat any paraphrase:
 
 Before you consider the demo recordable:
 
-- [ ] **Run `kind-signed` end to end against a cluster** ([eventing-lab#2](https://github.com/rossoctl/eventing-lab/issues/2)) — the one blocking item
-- [ ] Capture the **on-cluster signing cost** and put it inside the wake-latency slide number
-- [ ] Record the run in `docs/reports/` (append a new section — reports are never retro-edited)
-- [ ] Confirm **which cluster** every number on every slide came from
+- [x] **Run `kind-signed` end to end against a cluster** ([eventing-lab#2](https://github.com/rossoctl/eventing-lab/issues/2)) — done 2026-10-14, 54/55
+- [x] Record the run in `docs/reports/` — [`../reports/phase2-cluster-run-report.md`](../reports/phase2-cluster-run-report.md)
+- [ ] **Re-run the flow for 55/55.** Four commits in #8 (`9d5f5fd`, `2b632af`, `0065382`, `1a128bb`) postdate the last run; `2b632af` changes deploy behaviour, not just an assertion
+- [ ] Capture the **on-cluster signing cost** — still laptop-only at 123 ms; either measure it or stop breaking it out of the wake number
+- [ ] Confirm **which cluster** every number on every slide came from, and name the `group.initial.rebalance.delay.ms` wherever a wake time appears
+- [ ] Start the **port-forward** before recording, and use `--public-url` — the ingress drops ~40% of POSTs ([#9](https://github.com/rossoctl/eventing-lab/issues/9))
+- [ ] Verify the running image **contains the signing code**, not just that it pulled ([#10](https://github.com/rossoctl/eventing-lab/issues/10)) — `grep -c "request signing"` inside the pod
+- [ ] Check the keyset has **2 kids, not `{}`**, after the final deploy ([#12](https://github.com/rossoctl/eventing-lab/issues/12) is why this is not self-announcing)
+- [ ] Start the runner **log capture loop** before the flow — the pod is gone ~30 s after the work drains
 - [ ] Pre-pull images on the node (a cold pull is 5.1 s of the wake at 245 MB)
 - [ ] Decide **R1/SPIRE: build the gate, or cut the beat and name the upgrade path**
 - [ ] Decide whether the §10.1 allowlist-drift stage makes the cut — ~1 hour now that enforcement is in
