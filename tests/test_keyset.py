@@ -506,3 +506,123 @@ def test_response_decision_does_not_mutate_the_event(tmp_path):
     before_attrs, before_data = dict(e.attrs), dict(e.data)
     S.response_decision(e, ks, require=True)
     assert e.attrs == before_attrs and e.data == before_data
+
+
+# --- An enforcing service must refuse an empty approved set (eventing-lab#12) -------
+#
+# `refusal_if_enforcing_empty` is the decision; the two `__main__`s own the exit. The
+# bug it closes was found on a cluster and not by any of these tests' ancestors: a
+# 0-kid set verified nothing, so the runner refused every request including the
+# system's own, while the startup banner read ENFORCING. Four indicators were green.
+
+
+def _empty(tmp_path):
+    return _write(tmp_path, {})
+
+
+def test_an_enforcing_service_refuses_to_start_on_a_zero_kid_set(tmp_path):
+    """The bug: 0 kids admits nothing, so enforcement refuses everything silently."""
+    ks = keyset.load(_empty(tmp_path))
+    assert len(ks) == 0
+    why = keyset.refusal_if_enforcing_empty(
+        ks, enforcing=True, service="eventrunner",
+        path="/keys/keyset.json", env_var="ER_VERIFY_KEYSET_PATH")
+    assert why is not None
+
+
+def test_the_refusal_names_the_variable_and_the_path(tmp_path):
+    """The message is the whole point: an empty ConfigMap has to be diagnosable from
+    `kubectl logs` alone, which is where an operator meets this."""
+    ks = keyset.load(_empty(tmp_path))
+    why = keyset.refusal_if_enforcing_empty(
+        ks, enforcing=True, service="eventbridge",
+        path="/keys/keyset.json", env_var="EB_VERIFY_KEYSET_PATH")
+    assert "EB_VERIFY_KEYSET_PATH" in why
+    assert "/keys/keyset.json" in why
+    assert "0 kid(s)" in why
+    assert "[eventbridge]" in why
+
+
+def test_audit_only_mode_still_starts_on_a_zero_kid_set(tmp_path):
+    """Not enforcing means admit-and-report, which an empty set does coherently: it
+    reports nothing as approved and blocks nothing. Refusing here would break a
+    documented rollout step."""
+    ks = keyset.load(_empty(tmp_path))
+    assert keyset.refusal_if_enforcing_empty(
+        ks, enforcing=False, service="eventbridge",
+        path="p", env_var="EB_VERIFY_KEYSET_PATH") is None
+
+
+def test_no_keyset_at_all_under_enforcement_is_left_alone(tmp_path):
+    """`None` is the single-key path (`ER_VERIFY_KEY_PATH`), not a misconfiguration.
+    Returning a refusal here would break every single-key deployment."""
+    assert keyset.refusal_if_enforcing_empty(
+        None, enforcing=True, service="eventrunner",
+        path=None, env_var="ER_VERIFY_KEYSET_PATH") is None
+
+
+def test_a_populated_set_under_enforcement_starts(tmp_path):
+    """The configuration the control is for."""
+    ks = keyset.load(_write(tmp_path, {"runner-01": PUB.hex()}))
+    assert keyset.refusal_if_enforcing_empty(
+        ks, enforcing=True, service="eventrunner",
+        path="p", env_var="ER_VERIFY_KEYSET_PATH") is None
+
+
+def test_an_empty_set_really_does_verify_nothing(tmp_path):
+    """The premise, asserted rather than assumed — this is why the refusal is right.
+    Without it the fix is a policy claim; with it, the policy is derived."""
+    ks = keyset.load(_empty(tmp_path))
+    assert ks.select(None) is None
+    assert ks.select("runner-01") is None
+    e = _event()
+    S.sign_into(e, SEED, kid="runner-01")
+    ok, why, _ = S.response_decision(e, ks, require=True)
+    assert not ok, "a 0-kid set must not admit a correctly signed event"
+
+
+def test_both_services_actually_call_the_refusal_and_exit_on_it():
+    """The guard the other tests cannot provide. `refusal_if_enforcing_empty` returning
+    a string proves nothing if no service calls it, or calls it and drops the result —
+    which is the exact shape of the bug this fixes: a check that verified an intent
+    rather than a state. Mutation-checked four ways: removing the call, dropping the
+    `raise`, raising `ValueError` instead of `SystemExit`, and raising somewhere other
+    than the refusal's own `if` body each fail this.
+    """
+    import ast
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parent.parent
+    for svc, env_var in (("eventbridge", "EB_VERIFY_KEYSET_PATH"),
+                         ("eventrunner", "ER_VERIFY_KEYSET_PATH")):
+        tree = ast.parse((root / svc / "__main__.py").read_text())
+        calls = [
+            n for n in ast.walk(tree)
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute)
+            and n.func.attr == "refusal_if_enforcing_empty"
+        ]
+        assert len(calls) == 1, f"{svc} must call the refusal exactly once"
+
+        # The refusal has to CAUSE the exit: the call is the `if` test, and that
+        # `if`'s own body raises SystemExit. `ast.walk` over the whole If would also
+        # accept a raise nested somewhere unrelated, and any Raise would accept a
+        # ValueError — which exits, but as a traceback rather than the one clean line
+        # in `kubectl logs` this policy exists to produce (see __main__.py's §11).
+        guards = [
+            n for n in ast.walk(tree)
+            if isinstance(n, ast.If)
+            and calls[0] in list(ast.walk(n.test))
+            and any(isinstance(s, ast.Raise)
+                    and isinstance(s.exc, ast.Call)
+                    and isinstance(s.exc.func, ast.Name)
+                    and s.exc.func.id == "SystemExit"
+                    for s in n.body)
+        ]
+        assert guards, f"{svc} must raise SystemExit directly on the refusal"
+
+        # The env var comes from the call's own keyword, not from "it appears
+        # somewhere in the file" — a comment mentioning it would satisfy that.
+        passed = {k.arg: k.value for k in calls[0].keywords}.get("env_var")
+        assert isinstance(passed, ast.Constant) and passed.value == env_var, \
+            f"{svc} must pass env_var={env_var!r} to the refusal"

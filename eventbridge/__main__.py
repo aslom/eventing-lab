@@ -69,6 +69,16 @@ def main() -> int:
         mode = "ENFORCING" if cfg.require_response_signature else "audit only"
         print(f"[eventbridge] response verification ON ({mode}) — {len(ks)} kid(s): "
               f"{', '.join(ks.kids)}")
+        # A set with zero kids under enforcement refuses everything, including our own
+        # traffic, while the banner above still reads ENFORCING. Same policy as the
+        # missing-kid refusal below, applied to the case that is wider in effect.
+        if (why := keyset.refusal_if_enforcing_empty(
+                ks,
+                enforcing=cfg.require_response_signature,
+                service="eventbridge",
+                path=cfg.verify_keyset_path,
+                env_var="EB_VERIFY_KEYSET_PATH")):
+            raise SystemExit(why)
         if not cfg.signing_kid:
             # Without a bridge kid there is nothing to compare a group event against,
             # so any approved runner could forge one. Refuse rather than accept-any.
