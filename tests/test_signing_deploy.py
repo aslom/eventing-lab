@@ -319,3 +319,204 @@ def test_force_still_rotates_every_key(tmp_path):
     G.write_seeds(tmp_path, fresh, force=True)
     assert (tmp_path / "eb-01" / "seed.hex").read_text() != first
     assert keys  # the originals existed; the point is force overwrote them
+
+
+# ---- preflight check 14: the image must contain the code being enforced -----
+#
+# eventing-lab#10. Check 4 proves an image can be PULLED; on 2026-10-14 it passed
+# green against an EventBridge image with no signing code in it, and the deploy then
+# turned enforcement on. These cover the decision (which overlay enforces what) and
+# the wiring, neither of which needs a cluster. The probe pod itself does — see the
+# PR, and eventing-lab#14.
+
+import shutil  # noqa: E402
+import subprocess  # noqa: E402
+
+import k8s_preflight as PF  # noqa: E402
+
+_HAVE_KUBECTL = shutil.which("kubectl") is not None
+needs_kubectl = pytest.mark.skipif(not _HAVE_KUBECTL, reason="kubectl not on PATH")
+
+REPO = pathlib.Path(__file__).resolve().parent.parent
+
+
+class _Args:
+    """Only the attributes Preflight.__init__ and check 14 read."""
+
+    def __init__(self, overlay):
+        self.overlay = overlay
+        self.namespace = "kev1"
+        self.registry = "quay.io/aslomnet/"
+        self.tag = "local1"
+        self.context = None
+        self.kubeconfig = None
+
+
+def _pf(overlay, k=None):
+    from k8slib import Kubectl
+    return PF.Preflight(k or Kubectl(), Checks(prefix="test"), _Args(overlay))
+
+
+def test_configmap_value_reads_the_named_document_not_just_any_match():
+    """The reason this splits on `---` first: the render holds several ConfigMaps, and
+    a bare search would read a key out of whichever one happened to match."""
+    rendered = (
+        "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: other\ndata:\n"
+        '  ER_REQUIRE_SIGNATURE: "true"\n'
+        "---\n"
+        "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: eventing-config\ndata:\n"
+        '  ER_REQUIRE_SIGNATURE: "false"\n'
+    )
+    assert PF.configmap_value(rendered, "eventing-config", "ER_REQUIRE_SIGNATURE") == "false"
+    assert PF.configmap_value(rendered, "other", "ER_REQUIRE_SIGNATURE") == "true"
+
+
+def test_configmap_value_is_none_when_the_key_is_absent():
+    """Absent must read as off, matching both services' own defaults — not as a
+    crash, and not as on."""
+    rendered = ("apiVersion: v1\nkind: ConfigMap\nmetadata:\n"
+                "  name: eventing-config\ndata:\n  SOMETHING_ELSE: \"x\"\n")
+    assert PF.configmap_value(rendered, "eventing-config", "ER_REQUIRE_SIGNATURE") is None
+    assert PF.configmap_value(rendered, "nope", "ER_REQUIRE_SIGNATURE") is None
+
+
+def test_signing_enforcement_refuses_a_render_with_no_eventing_config(monkeypatch):
+    """A render missing the `eventing-config` ConfigMap entirely is not "enforcement
+    off" — it is a check that failed to find the state it reads, and that is
+    indistinguishable from a genuinely-absent key through `configmap_value`'s `None`.
+    A `namePrefix`, a `configMapGenerator` (content-hash suffix) or a rename all do
+    this, and `eventing-config` is an unconditional resource of
+    `k8s/base/kustomization.yaml`, so the only honest response is to refuse."""
+    pf = _pf("kind")
+    monkeypatch.setattr(pf.k, "kustomize", lambda path: (
+        "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: something-else\ndata:\n"
+        '  ER_REQUIRE_SIGNATURE: "true"\n'))
+    with pytest.raises(RuntimeError, match="renders no ConfigMap named 'eventing-config'"):
+        pf.signing_enforcement()
+
+
+@needs_kubectl
+def test_the_signed_overlay_is_detected_as_enforcing_both_directions():
+    """Driven off the REAL render, because the point of #10 is to read the state
+    rather than trust a name."""
+    assert _pf("kind-signed").signing_enforcement() == {
+        "eventrunner": True, "eventbridge": True}
+
+
+@needs_kubectl
+@pytest.mark.parametrize("overlay", ["test", "kind", "demo"])
+def test_the_unsigned_overlays_are_detected_as_not_enforcing(overlay):
+    assert _pf(overlay).signing_enforcement() == {
+        "eventrunner": False, "eventbridge": False}
+
+
+def test_the_check_creates_no_pod_when_nothing_is_enforced(monkeypatch):
+    """The unsigned fast path must pay nothing. A pod here would add ~30-60 s to every
+    `k8s_deploy.py` run against `test`/`kind`/`demo`."""
+    pf = _pf("kind")
+    monkeypatch.setattr(pf, "signing_enforcement",
+                        lambda: {"eventrunner": False, "eventbridge": False})
+    monkeypatch.setattr(pf, "_probe_signing_code",
+                        lambda *a, **k: pytest.fail("probed despite no enforcement"))
+    pf.check_signing_code_present()
+    assert pf.c.failed == 0
+
+
+def test_both_services_are_probed_when_only_one_direction_enforces(monkeypatch):
+    """Enforcement and signing sit on opposite ends of the wire: `ER_REQUIRE_SIGNATURE`
+    is verified by eventrunner but SIGNED by eventbridge (`kafka_out.py`), and
+    vice versa. So the service that must carry the signing code when one direction
+    enforces is the OTHER one, not just the enforcing one — probing only the
+    enforcing service would have missed 2026-10-14 in its original orientation,
+    where the image without the code was the bridge's and the service that refused
+    everything was the runner."""
+    pf = _pf("kind-signed")
+    monkeypatch.setattr(pf, "signing_enforcement",
+                        lambda: {"eventrunner": True, "eventbridge": False})
+    probed = []
+    monkeypatch.setattr(pf, "_probe_signing_code",
+                        lambda svc, ref, mod: probed.append((svc, mod)))
+    pf.check_signing_code_present()
+    assert sorted(probed) == [("eventbridge", "eventbridge.__main__"),
+                              ("eventrunner", "eventrunner.__main__")]
+
+
+def test_the_probe_fails_fast_on_an_unpullable_image_without_creating_a_pod(monkeypatch):
+    """Check 4 normally proves pullability first, but it is skippable (`--skip 4`),
+    and this check must not then burn its full 180s wait in ImagePullBackOff only to
+    report `phase=Pending` under a message about missing signing code -- the wrong
+    diagnosis for a pull failure."""
+    pf = _pf("kind-signed")
+    monkeypatch.setattr(PF, "registry_manifest",
+                        lambda ref, **kw: (404, None, "not found"))
+    created = []
+    monkeypatch.setattr(pf.k, "apply_stdin",
+                        lambda *a, **k: created.append(1) or pytest.fail("pod created"))
+    pf._probe_signing_code("eventrunner", "example.com/not-pushed:latest",
+                           "eventrunner.__main__")
+    assert created == []
+    assert pf.c.failed == 1
+
+
+def test_the_probe_targets_each_services_own_main_module():
+    """This is the test that matters most, and it exists because the first version of
+    this check got it WRONG: it imported `eventbridge.kafka_in`, which imports fine
+    without `eventrunner/` present and would therefore have passed against the exact
+    image that caused the 2026-10-14 evening.
+
+    `__main__` is what `python -m <pkg>` runs, and it is the module that reaches
+    `handlers.py:18`'s `from eventrunner import agentspec`. A future edit that
+    "simplifies" this back to a leaf module reintroduces the bug silently, so the
+    choice is pinned here rather than left to the comment.
+    """
+    assert PF.ENFORCEMENT_KEYS["eventbridge"][1] == "eventbridge.__main__"
+    assert PF.ENFORCEMENT_KEYS["eventrunner"][1] == "eventrunner.__main__"
+    for svc, (_key, mod) in PF.ENFORCEMENT_KEYS.items():
+        assert mod == f"{svc}.__main__"
+
+
+def test_the_bridge_main_really_does_need_eventrunner_present():
+    """The premise behind the module choice, asserted rather than assumed: block
+    `eventrunner` the way a Dockerfile that never COPYed it would, and the bridge's
+    `__main__` must fail to import. If this ever stops being true the probe has
+    quietly lost its teeth, and this test says so."""
+    code = (
+        "import sys, importlib\n"
+        "class B:\n"
+        "    def find_spec(self, name, target=None, path=None):\n"
+        "        if name.split('.')[0] == 'eventrunner':\n"
+        "            raise ModuleNotFoundError(name)\n"
+        "        return None\n"
+        "sys.meta_path.insert(0, B())\n"
+        "try:\n"
+        "    importlib.import_module('eventbridge.__main__')\n"
+        "    print('IMPORTED')\n"
+        "except ModuleNotFoundError:\n"
+        "    print('REFUSED')\n"
+    )
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True,
+                       text=True, cwd=str(REPO))
+    assert "REFUSED" in r.stdout, (
+        f"eventbridge.__main__ imported without eventrunner — the probe would no "
+        f"longer catch the original bug.\nstdout={r.stdout!r} stderr={r.stderr[-300:]!r}")
+
+
+def test_check_14_is_registered_and_would_be_dispatched():
+    """The wiring guard. A method nothing dispatches is the shape of the bug being
+    fixed. Mutation-checked: removing the CHECKS entry fails this."""
+    assert 14 in PF.CHECKS, "check 14 is not registered in CHECKS"
+    title, method = PF.CHECKS[14]
+    assert method == "check_signing_code_present"
+    assert callable(getattr(PF.Preflight, method, None))
+    # run_pre dispatches by getattr over CHECKS, so registration is sufficient —
+    # but assert the contract rather than trusting it.
+    src = (REPO / "scripts" / "k8s_preflight.py").read_text()
+    assert "getattr(pf, method)()" in src, "run_pre no longer dispatches by name"
+
+
+def test_kind_signed_is_an_accepted_overlay_for_preflight():
+    """`k8s_deploy.py` already passes `kind-signed` into Preflight, so preflight's own
+    parser rejecting it made the value unvalidated and unread — part of why check 4
+    never saw the problem."""
+    args = PF.build_args(["--overlay", "kind-signed"])
+    assert args.overlay == "kind-signed"
