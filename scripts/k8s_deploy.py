@@ -609,7 +609,7 @@ def build_args(argv=None):
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--namespace", "-n", default=os.environ.get("NS", "kev1"))
     ap.add_argument("--overlay", default="test",
-                    choices=("test", "kind", "demo", "kind-signed"))
+                    choices=("test", "kind", "demo", "kind-signed", "kind-signed-auth"))
     ap.add_argument("--signing-keys", default=None, metavar="DIR",
                     help="key directory from scripts/gen_signing_keys.py. Applies one "
                          "seed Secret per service plus the approved-key ConfigMap. "
@@ -656,13 +656,16 @@ def main(argv=None) -> int:
     # material produces a cluster that refuses every event with no obvious cause — the
     # pods start (both volumes are `optional: true`) and then reject everything. Refuse
     # up front unless key material is already deployed.
-    if args.overlay == "kind-signed" and not args.signing_keys:
+    # `.startswith`, not `==`: ANY `kind-signed*` overlay (e.g. `kind-signed-auth`)
+    # inherits ER_REQUIRE_SIGNATURE/EB_REQUIRE_RESPONSE_SIGNATURE from `kind-signed`,
+    # so the name-equality check this PR fixed in `signed_beats` is the same bug here.
+    if args.overlay.startswith("kind-signed") and not args.signing_keys:
         have = all(k.get("secret", n, namespace=args.namespace, missing_ok=True)
                    is not None for n in (EB_SIGNING_SECRET, ER_SIGNING_SECRET))
         if not have:
-            die("--overlay kind-signed enforces signatures but no key material is "
-                "deployed. Run `python3 scripts/gen_signing_keys.py --out DIR` then "
-                "pass --signing-keys DIR.", prefix=PREFIX)
+            die(f"--overlay {args.overlay} enforces signatures but no key material "
+                f"is deployed. Run `python3 scripts/gen_signing_keys.py --out DIR` "
+                f"then pass --signing-keys DIR.", prefix=PREFIX)
         c.log("no --signing-keys given, but both seed Secrets are already deployed")
 
     needed, reason = deploy_needed(k, c, d.overlay, args.namespace)

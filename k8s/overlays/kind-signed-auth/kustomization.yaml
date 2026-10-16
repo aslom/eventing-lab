@@ -1,0 +1,69 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: kev1
+
+# `kind-signed` plus USER identity: who asked, verified by GitHub, recorded on the
+# event. The signing beats prove which approved KEY signed; this overlay is what lets
+# the demo also prove which PERSON asked — and, because `submitter` is in
+# `signing.SIGNED_ATTRS`, that the answer cannot be relabelled in flight.
+#
+# A separate overlay rather than a patch on `kind-signed`, for the reason that overlay
+# gives for its own existence: turning authentication on makes EVERY request need a
+# credential, so folding it into `kind-signed` would require re-verifying all seven acts
+# that currently pass there. Those ran green on a cluster on 2026-10-14 and are the
+# recording; this overlay carries the one new beat and leaves them untouched.
+#
+# Drive it with:
+#   export DEMO_GH_TOKEN=ghp_...        # never a flag or a file — it would reach `ps`
+#   python3 scripts/k8s_deploy.py --yes --overlay kind-signed-auth \
+#       --signing-keys ~/.eventing-keys
+#   python3 scripts/k8s_demo_flow.py --overlay kind-signed-auth \
+#       --gh-login <your-login> --public-url http://127.0.0.1:18080 --tag local1
+resources:
+  - ../kind-signed
+
+patches:
+  # Approved-list mode: `EB_ALLOWED_USERS` alone activates GitHub sign-in, because
+  # `auth.resolve`'s `github_on` is an OR of the client id and the list. That is what
+  # makes a Personal Access Token work against the real `GET https://api.github.com/user`
+  # with no OAuth App and no browser mid-recording.
+  #
+  # **State the limit on the slide.** In this mode ANY GitHub token belonging to an
+  # approved login is accepted — there is no OAuth App scoping it to this application.
+  # `eventbridge/auth.resolve`'s own docstring calls it "useful for a quick test with a
+  # personal access token; not what you want in a deployment", and a talk about
+  # unchecked control claims does not get to skip that sentence.
+  #
+  # `EB_GITHUB_CLIENT_ID` is deliberately NOT set. Setting only the client id is the
+  # other half-configured state, and it refuses everything: the approved list would be
+  # empty and an empty list approves nobody.
+  - target:
+      kind: ConfigMap
+      name: eventing-config
+    patch: |-
+      # REPLACE the login with your own before deploying. Left as a placeholder rather
+      # than a real login so this file does not quietly approve a specific person on
+      # every cluster it is applied to.
+      #
+      # `add`, not `replace`: `EB_ALLOWED_USERS` is NOT a key in
+      # `k8s/base/configmap.yaml` (unlike `ER_ALLOWED_SUBMITTERS`, which is there as
+      # `""`). Both happen to render today either way, but `replace` on an absent path
+      # is a JSON-Patch error the base is one edit away from surfacing, and the two
+      # keys genuinely differ — saying so is cheaper than rediscovering it.
+      - op: add
+        path: /data/EB_ALLOWED_USERS
+        value: "CHANGEME-your-github-login"
+      # The runner-side half, and the reason this overlay is worth more than an HTTP
+      # status code. `ER_ALLOWED_SUBMITTERS` is checked AFTER the signature
+      # (eventrunner/consume.py), which is what makes `ce_submitter` trustworthy: the
+      # attribute is signed, so a forger cannot claim an approved login without
+      # breaking the signature. Same value as the list above — approving a submitter
+      # and approving a signer are different questions, and this overlay answers both
+      # for one person.
+      #
+      # It is also one step from the §10.1 allowlist-drift beat: edit this list while
+      # replicas are 0 and the next wake enforces the new one, because the list is read
+      # at startup and no long-lived process holds the old decision.
+      - op: replace
+        path: /data/ER_ALLOWED_SUBMITTERS
+        value: "CHANGEME-your-github-login"

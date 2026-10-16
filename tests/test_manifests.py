@@ -26,7 +26,11 @@ K8S = ROOT / "k8s"
 OVERLAYS = {"test": K8S / "overlays" / "test",
             "kind": K8S / "overlays" / "kind",
             "demo": K8S / "overlays" / "demo",
-            "kind-signed": K8S / "overlays" / "kind-signed"}
+            "kind-signed": K8S / "overlays" / "kind-signed",
+            # Added for the same reason the comment above gives for `kind-signed`:
+            # an overlay absent from this dict is silently skipped by EVERY assertion
+            # in this file, including the seed-path and Secret-vs-ConfigMap rules.
+            "kind-signed-auth": K8S / "overlays" / "kind-signed-auth"}
 
 _HAVE_KUBECTL = shutil.which("kubectl") is not None
 
@@ -689,3 +693,48 @@ def test_both_images_install_a_ca_bundle():
         assert "ln -sf /etc/ssl/certs/ca-certificates.crt /etc/ssl/cert.pem" in text, \
             f"{name} must point OpenSSL's default cafile at Debian's bundle"
         assert "no CA bundle" in text, f"{name} must assert it at build time"
+
+
+# ---- kind-signed-auth: identity on top of signing ---------------------------
+
+@needs_kubectl
+def test_the_auth_overlay_inherits_signature_enforcement():
+    """It builds on `kind-signed`, and the identity beat is worth nothing without
+    that: `ce_submitter` is only trustworthy because the signature covers it. An
+    overlay that enabled the allowlist while enforcement was off would filter honest
+    clients and restrict nobody — which is exactly the warning EventRunner prints."""
+    cm = find_doc(render("kind-signed-auth"), "ConfigMap", "eventing-config")
+    assert re.search(r'ER_REQUIRE_SIGNATURE:\s*"true"', cm)
+    assert re.search(r'EB_REQUIRE_RESPONSE_SIGNATURE:\s*"true"', cm)
+
+
+@needs_kubectl
+def test_the_auth_overlay_sets_both_halves_of_the_identity_check():
+    """Who may ASK (`EB_ALLOWED_USERS`, at the HTTP edge) and whose requests the runner
+    will ACT on (`ER_ALLOWED_SUBMITTERS`, after the signature check). Different
+    questions, and the beat demonstrates both."""
+    cm = find_doc(render("kind-signed-auth"), "ConfigMap", "eventing-config")
+    assert re.search(r"EB_ALLOWED_USERS:\s*\S+", cm)
+    assert re.search(r"ER_ALLOWED_SUBMITTERS:\s*\S+", cm)
+
+
+@needs_kubectl
+def test_the_auth_overlay_leaves_the_github_client_id_unset():
+    """Approved-list-only mode on purpose, so a PAT works with no OAuth App. Setting
+    ONLY the client id is the other half-configured state and it refuses everything:
+    sign-in activates, the approved list is empty, and an empty list approves nobody."""
+    cm = find_doc(render("kind-signed-auth"), "ConfigMap", "eventing-config")
+    m = re.search(r'EB_GITHUB_CLIENT_ID:\s*"?([^"\n]*)"?', cm)
+    assert m is None or not m.group(1).strip(), \
+        "EB_GITHUB_CLIENT_ID must stay empty in this overlay"
+
+
+@needs_kubectl
+def test_the_auth_overlay_ships_a_placeholder_not_a_real_login():
+    """A committed overlay must not approve a specific person on every cluster it is
+    applied to. The deploy step is to replace this."""
+    cm = find_doc(render("kind-signed-auth"), "ConfigMap", "eventing-config")
+    for key in ("EB_ALLOWED_USERS", "ER_ALLOWED_SUBMITTERS"):
+        m = re.search(rf'{key}:\s*"?([^"\n]*)"?', cm)
+        assert m and "CHANGEME" in m.group(1), \
+            f"{key} should carry a CHANGEME placeholder, got {m and m.group(1)!r}"

@@ -182,13 +182,52 @@ COLD_PROMPT = ("Once more: what was the codeword? Reply with just the codeword. 
 CODEWORD = "FLOW-7321"
 
 
-def get_json(url, *, timeout=10.0, method="GET", body=None):
+def get_json(url, *, timeout=10.0, method="GET", body=None, headers=None):
     req = urllib.request.Request(url, data=body, method=method)
     if body is not None:
         req.add_header("Content-Type", "application/json")
+    for name, value in (headers or {}).items():
+        req.add_header(name, value)
     with urllib.request.urlopen(req, timeout=timeout) as r:
         raw = r.read()
         return r.status, (json.loads(raw) if raw else None)
+
+
+def post_expecting_refusal(url, *, body=None, headers=None, timeout=10.0):
+    """POST and return `(code, headers, parsed_body)` WITHOUT raising on 4xx.
+
+    `urlopen` raises `HTTPError` on any 4xx, so a stage asserting a refusal through
+    `get_json` would surface the refusal as a crash rather than a verdict — and the
+    401's `WWW-Authenticate` header, which is half of what makes the refusal correct,
+    is only reachable from the exception object. Returning the triple keeps the stage
+    reading as assertions.
+
+    `code` is None when the request never got an HTTP answer at all (connection
+    refused, timeout), which is a different failure from a refusal and must not be
+    mistaken for one.
+    """
+    req = urllib.request.Request(url, data=body, method="POST")
+    if body is not None:
+        req.add_header("Content-Type", "application/json")
+    for name, value in (headers or {}).items():
+        req.add_header(name, value)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            raw = r.read()
+            return r.status, r.headers, (json.loads(raw) if raw else None)
+    except urllib.error.HTTPError as e:
+        raw = e.read()
+        try:
+            parsed = json.loads(raw) if raw else None
+        except ValueError:
+            parsed = {"raw": raw[:200].decode("utf-8", "replace")}
+        # `e.headers`, not `dict(e.headers)`: it is an `email.message.Message`, whose
+        # `.get()` is case-insensitive. Header names are case-insensitive per RFC 9110,
+        # and a proxy hop may return `www-authenticate` — a plain dict would then miss
+        # the challenge the caller asserts on.
+        return e.code, e.headers, parsed
+    except (urllib.error.URLError, OSError):
+        return None, {}, None
 
 
 def get_status(url, *, timeout=10.0):
@@ -226,11 +265,18 @@ class Flow:
         # contains the expected text — so stage 2's `expect_contains(text, "OK")` could
         # pass by accident while proving nothing.
         self.mock = args.overlay != "demo"
-        # eventing-lab#2 — default on for the overlay that enforces signatures, since that is the
-        # only reason `kind-signed` exists. Explicit flags win, so the beats can also be
+        # eventing-lab#2 — default on for the overlays that enforce signatures, since that is
+        # the only reason they exist. Explicit flags win, so the beats can also be
         # driven against any other enforcing deployment.
+        #
+        # `startswith`, not `==`: this read `== "kind-signed"` and `kind-signed-auth`
+        # therefore defaulted the beats OFF, so every signed assertion — including the
+        # identity gate that overlay exists for — was silently skipped while the flow
+        # still reported success. Caught before it shipped, but it is the same shape as
+        # the bugs the cluster run found: a check keyed on a name rather than on what
+        # the deployment actually enforces.
         self.signed_beats = (args.signed_beats if args.signed_beats is not None
-                             else args.overlay == "kind-signed")
+                             else args.overlay.startswith("kind-signed"))
 
     # ---- helpers ----
     def replicas(self) -> int:
@@ -241,8 +287,11 @@ class Flow:
                           namespace=self.ns, missing_ok=True) or {}
 
     def turns(self) -> list[dict]:
+        return self.turns_for(self.corr)
+
+    def turns_for(self, corr: str) -> list[dict]:
         try:
-            _, body = get_json(f"{self.base}/v0/agents/{self.corr}/turns")
+            _, body = get_json(f"{self.base}/v0/agents/{corr}/turns")
         except (urllib.error.URLError, OSError):
             return []
         return (body or {}).get("turns") or []
@@ -1026,6 +1075,122 @@ class Flow:
                       out[-500:])
         return ok
 
+    # ---- R-identity: who ASKED, and that the answer is tamper-evident ----
+    def assert_identity_gate(self) -> None:
+        """An unauthenticated submit is refused; an approved GitHub user's works.
+
+        The seam this closes. Acts 3 and 6 prove *which approved key signed*; nothing
+        in the flow proved *which person asked*. This does, and then shows the answer
+        is tamper-evident, which is the part that makes it more than HTTP statuses:
+        EventBridge stamps the login GitHub vouched for onto the event as
+        `ce_submitter`/`ce_submitteriss`, and both are in `signing.SIGNED_ATTRS` — so a
+        forger with write access to the requests topic cannot relabel the asker without
+        invalidating the signature.
+
+        **Approved-list mode, not the device flow.** `EB_ALLOWED_USERS` alone turns
+        sign-in on (`auth.resolve`'s `github_on` is an `or`), so a Personal Access
+        Token works against the real `GET /user` with no OAuth App and no browser mid-
+        recording. State the limit on the slide: in this mode ANY GitHub token from an
+        approved login is accepted, which is right for a demo and wrong for a
+        deployment.
+
+        **Skips rather than fails without a token.** `DEMO_GH_TOKEN` is read from the
+        environment only — never argv, never a file — so it cannot reach `ps` or a
+        commit. Absent, the beat is not runnable and saying so is better than a red
+        check that means "you did not export a secret".
+        """
+        self.c.section("identity gate — unauthenticated refused, approved user accepted")
+        token = os.environ.get("DEMO_GH_TOKEN", "").strip()
+        login = (self.args.gh_login or "").strip().lower()
+        if not token or not login:
+            self.c.log("SKIP: needs DEMO_GH_TOKEN in the environment and --gh-login. "
+                       "Export the PAT and pass the login it belongs to; this beat "
+                       "makes a real GET https://api.github.com/user call.")
+            return
+
+        body = json.dumps({"prompt": COLD_PROMPT, "max_turns": 1}).encode()
+        url = f"{self.base}/v0/agents"
+
+        # 1. No credential at all.
+        code, headers, parsed = post_expecting_refusal(url, body=body)
+        if code is None:
+            return self.c.fail("POST /v0/agents without a credential",
+                               "no HTTP response at all — that is a reachability "
+                               "failure, not a refusal")
+        self.c.expect(code == 401,
+                      "POST /v0/agents with no credential is refused 401",
+                      f"got {code}; body={parsed}")
+        self.c.expect(headers.get("WWW-Authenticate") == 'Bearer realm="eventbridge"',
+                      'the 401 carries WWW-Authenticate: Bearer realm="eventbridge"',
+                      f"headers={sorted(headers)}")
+        self.c.expect(bool((parsed or {}).get("error")),
+                      "and names a reason in the body",
+                      f"body={parsed}")
+
+        # 2. A credential that is real-shaped but not a token GitHub knows. This is
+        #    what separates validation from a presence check — a gate that accepts any
+        #    non-empty Authorization header would pass step 1 and fail here.
+        code_bad, _, parsed_bad = post_expecting_refusal(
+            url, body=body, headers={"Authorization": "Bearer ghp_not_a_real_token"})
+        self.c.expect(code_bad == 401,
+                      "a credential GitHub does not recognise is refused 401 too "
+                      "(validated, not merely present)",
+                      f"got {code_bad}; body={parsed_bad}")
+
+        # 3. The approved user. 202 and a correlation id come back.
+        code_ok, _, parsed_ok = post_expecting_refusal(
+            url, body=body, headers={"Authorization": f"Bearer {token}"})
+        if not self.c.expect(code_ok == 202,
+                             f"the approved user {login} is accepted 202",
+                             f"got {code_ok}; body={parsed_ok}\n"
+                             f"  403 means the login is not in EB_ALLOWED_USERS; 401 "
+                             f"means GitHub did not vouch for DEMO_GH_TOKEN."):
+            return
+        corr = (parsed_ok or {}).get("correlationid")
+        if not self.c.expect(bool(corr), "and a correlationid was minted",
+                             f"body={parsed_ok}"):
+            return
+        self.c.note("identity-gate correlation", str(corr))
+
+        # 4. The verified login rides on the submission. This is the payoff: not that a
+        #    request was allowed, but that WHO asked is now recorded.
+        #
+        #    Read `…/turns`, NOT `…/events.jsonl`. The latter serves the `responses`
+        #    table (`store.raw_events_for`), written only by the responses consumer
+        #    (`kafka_in.py`), and `eventrunner/emit.py` puts no `submitter` on a
+        #    response event. The verified login is stored by `insert_prompt`
+        #    (handlers.py:279) and surfaced per turn by `get_turns` (handlers.py:631).
+        deadline = time.monotonic() + 90
+        turn = None
+        while time.monotonic() < deadline:
+            turns = self.turns_for(corr)
+            if turns:
+                turn = turns[0]
+                break
+            time.sleep(2)
+        if not self.c.expect(turn is not None,
+                             "the submitted request reached the turn tape",
+                             f"no turns for {corr} within 90 s"):
+            return
+        self.c.expect(str(turn.get("submitter", "")).lower() == login,
+                      f"the submission records submitter={login} — the login GitHub "
+                      f"vouched for, not one the caller typed",
+                      f"submitter={turn.get('submitter')!r}")
+        # `ce_submitteriss` is deliberately NOT asserted here: it is set on the request
+        # CloudEvent (handlers.py:287) and never persisted — no column in `prompts`, no
+        # route returns it. Asserting it over HTTP would be asserting nothing. The
+        # issuer claim is covered by the SIGNED_ATTRS check below; proving it end to end
+        # means reading the requests topic, the way `_publish_forgery` reaches Kafka.
+
+        # 5. And it is covered by the signature, which is what makes it trustworthy
+        #    downstream — EventRunner's ER_ALLOWED_SUBMITTERS check runs AFTER the
+        #    signature check for exactly this reason (consume.py).
+        self.c.expect("submitter" in signing.SIGNED_ATTRS
+                      and "submitteriss" in signing.SIGNED_ATTRS,
+                      "both attributes are in signing.SIGNED_ATTRS, so the asker "
+                      "cannot be relabelled in flight without breaking the signature")
+        self.c.note("identity", f"{login} via github; submitter covered by the signature")
+
     # ---- §21: a group of N agents, tracked ----
     def assert_group(self, n: int) -> None:
         """Launch a group of N agents through the EventBridge API and track it.
@@ -1246,7 +1411,7 @@ def build_args(argv=None):
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--namespace", "-n", default=os.environ.get("NS", "kev1"))
     ap.add_argument("--overlay", default="test",
-                    choices=("test", "kind", "kind-signed", "demo"))
+                    choices=("test", "kind", "kind-signed", "kind-signed-auth", "demo"))
     ap.add_argument("--kubeconfig", default=None,
                     help="kubeconfig file (e.g. .kube/config-kind for a Kind cluster)")
     ap.add_argument("--context", default=None)
@@ -1255,6 +1420,11 @@ def build_args(argv=None):
     ap.add_argument("--tag", default=os.environ.get("TAG", DEFAULT_TAG))
     ap.add_argument("--ingress-port", type=int, default=30080,
                     help="host port the ingress controller is reachable on (Kind)")
+    ap.add_argument("--gh-login", default=os.environ.get("DEMO_GH_LOGIN"),
+                    help="the GitHub login DEMO_GH_TOKEN belongs to. Required by the "
+                         "identity-gate beat, which asserts the event carries exactly "
+                         "this ce_submitter. The TOKEN is read from DEMO_GH_TOKEN in "
+                         "the environment only -- never a flag, so it cannot reach ps.")
     ap.add_argument("--public-url", default=None)
     ap.add_argument("--public-url-timeout", type=float, default=120.0)
     ap.add_argument("--idle-timeout", type=float, default=240.0)
@@ -1320,6 +1490,9 @@ def main(argv=None) -> int:
         # forged answer and a forged wake. The request beat leaves the runner at zero
         # itself, so it needs no stage3() between.
         f.assert_forged_request_refused()
+        # Who ASKED, before the audit so the audit reports on the identity-gated
+        # submission alongside the two forgeries. Self-skips without DEMO_GH_TOKEN.
+        f.assert_identity_gate()
         f.assert_audit_trail()
         f.stage3()
     if not args.skip_cold_continue:

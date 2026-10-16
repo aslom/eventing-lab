@@ -8,9 +8,9 @@ thing you hold while recording.
 **Read this first:** every act below is marked **🟢 DOABLE TODAY**, **🟡 PARTIAL**, or
 **🔴 NEEDS WORK**. The marks are the point of the document. **Seven of the eight acts are
 recordable**, all seven now verified against a Kind cluster rather than scripted-and-hoped;
-one needs code that does not exist and is cut. Four further beats sit below the acts: two that
-ran on the cluster and are recordable (§8.1, §8.2), one built but without a stage, one needing
-SPIRE.
+one needs code that does not exist and is cut. Five further beats sit below the acts: two that
+ran on the cluster and are recordable (§8.1, §8.2), one built and tested but not yet run on a
+cluster (§8.3, the identity gate), one built but without a stage, one needing SPIRE.
 
 Nothing here is narrated over a system that does not do it. Where a beat is cut, the script
 says what to say instead — per the talk's own thesis, an unchecked control claim is the
@@ -32,6 +32,7 @@ failure mode with no recovery.
 | **8** | Blocked egress on a wrong-scope call | 🔴 **NEEDS WORK** | **cut it** — see §9 |
 | **—** | Scale-to-zero then `/continue` (stage 2c) | 🟢 **DOABLE TODAY** | — |
 | **—** | Replay guard drops stale requests (T5.6) | 🟢 **DOABLE TODAY** | — |
+| **—** | Identity gate — unauthenticated refused, approved user accepted (§8.3) | 🟡 **PARTIAL** | built + 17 tests; **not yet run on a cluster** |
 | **—** | Allowlist drift between submit and wake | 🟡 **PARTIAL** | enforcement verified; needs a demo stage |
 | **—** | No SVID, no consumption | 🔴 **NEEDS WORK** | no SPIRE anywhere |
 
@@ -124,8 +125,11 @@ on screen and what to say over it.
   *every* `k8s_deploy.py` invocation — it resets both Deployments to `:dev` and `Always`.
 
   Then **verify the running images actually contain the signing code**. This is the step
-  whose absence caused the evening above, and preflight still does not do it
-  ([eventing-lab#10](https://github.com/rossoctl/eventing-lab/issues/10)). The two
+  whose absence caused the evening above. **Preflight check 14 now does this automatically**
+  for any overlay that enforces signatures
+  ([eventing-lab#10](https://github.com/rossoctl/eventing-lab/issues/10), merged) — it probes
+  each image and fails the deploy if `<pkg>.__main__` will not import. The commands below
+  remain useful as a spot check against a cluster you did not just deploy to. The two
   services need different checks: the stale image that evening was EventBridge's — it is
   up throughout, so check it in place — while EventRunner sits at 0 replicas until there
   is lag, so before the flow there is no pod to exec into and its image has to be
@@ -403,6 +407,63 @@ asked is worth more than the 30 seconds it costs.
 
 ---
 
+### 8.3 The identity gate — who *asked*  (R-identity)
+
+🟡 **PARTIAL — built, not yet run on a cluster.** The stage is implemented
+(`assert_identity_gate`, `k8s_demo_flow.py`) with tests, including three that drive it
+against a deliberately-broken bridge and require it to fail. **It has not run against a
+cluster**, so do not mark it 🟢 or narrate it as verified until it has —
+[eventing-lab#14](https://github.com/rossoctl/eventing-lab/issues/14).
+
+Needs its own overlay and a credential:
+
+```sh
+export DEMO_GH_TOKEN=ghp_...        # env only — a flag would reach `ps`
+python3 scripts/k8s_deploy.py --yes --overlay kind-signed-auth \
+  --signing-keys ~/.eventing-keys
+python3 scripts/k8s_demo_flow.py --overlay kind-signed-auth \
+  --gh-login <your-login> --public-url http://127.0.0.1:18080 --tag local1
+```
+
+Edit `EB_ALLOWED_USERS` and `ER_ALLOWED_SUBMITTERS` in
+`k8s/overlays/kind-signed-auth/` first — both ship as `CHANGEME` placeholders on purpose.
+
+**On screen:** three `POST /v0/agents` calls in a row. No credential → **401** with
+`WWW-Authenticate: Bearer realm="eventbridge"`. A junk token → **401 again**. The approved
+user's token → **202**, and then `GET …/turns` showing `submitter=<login>` — the login
+GitHub vouched for, read back from the turn tape rather than typed by the caller.
+
+**Say:** the first request was not rejected by a signature check — it never became an event
+at all. EventBridge refuses before the first write, so there is no transcript, no correlation
+id, and nothing on the topic. Then the same request, signed in as an approved user, works —
+and the event now records *who asked*, verified by GitHub rather than typed by the caller.
+
+**The line that makes this more than HTTP status codes:** `submitter` and `submitteriss` are
+in `signing.SIGNED_ATTRS`. So the identity is covered by the signature and **cannot be
+relabelled in flight** — and that is precisely why EventRunner checks
+`ER_ALLOWED_SUBMITTERS` *after* the signature check rather than before. Acts 3 and 6 prove
+which approved *key* signed; this proves which *person* asked, and that the answer is
+tamper-evident. Together they close the loop.
+
+**Two limits to state out loud, because both are real:**
+
+- **Approved-list mode accepts any GitHub token from an approved login.** There is no OAuth
+  App scoping it to this application. That is right for a demo driven by a PAT and wrong for
+  a deployment — `eventbridge/auth.py` says so in its own docstring, and a talk about
+  unchecked control claims does not get to skip the sentence.
+- **Only four routes are guarded.** `start_agent`, `create_group`, `list_groups` and group
+  mutations. **`PUT /transcript` is not** — and it is the checkpoint EventRunner resumes from
+  on a cold pod, so an unauthenticated write changes what the agent continues with. Request
+  signing does not cover it either. That is
+  [eventing-lab#1](https://github.com/rossoctl/eventing-lab/issues/1), and it is the reason
+  §15 says not to expose the public Route during the conference.
+
+**Why it is worth the 90 seconds:** it is the only beat that answers "who" rather than
+"what", and it sets up §10.1's drift beat directly — the allowlist it configures is read at
+*startup*, so editing it while replicas are zero is the whole trust-scope-drift story.
+
+---
+
 ## 9. Act 8 — blocked egress  (D3): **cut it**
 
 🔴 **NEEDS WORK — and the recommendation is to cut the beat, not build it.**
@@ -641,11 +702,12 @@ Before you consider the demo recordable:
 - [ ] Capture the **on-cluster signing cost** — still laptop-only at 123 ms; either measure it or stop breaking it out of the wake number
 - [ ] Confirm **which cluster** every number on every slide came from, and name the `group.initial.rebalance.delay.ms` wherever a wake time appears
 - [ ] Start the **port-forward** before recording, and use `--public-url` — the ingress drops ~40% of POSTs ([#9](https://github.com/rossoctl/eventing-lab/issues/9))
-- [ ] Verify the running image **contains the signing code**, not just that it pulled ([#10](https://github.com/rossoctl/eventing-lab/issues/10)) — EventBridge in its pod, EventRunner from the image itself (the §1 commands; the runner has no pod before the flow)
-- [ ] Check the keyset has **2 kids, not `{}`**, after the final deploy ([#12](https://github.com/rossoctl/eventing-lab/issues/12) is why this is not self-announcing)
+- [x] Verify the running image **contains the signing code**, not just that it pulled — now **automated as preflight check 14** ([#10](https://github.com/rossoctl/eventing-lab/issues/10), merged): it probes each enforcing service's image and fails the deploy if `<pkg>.__main__` will not import. The manual §1 commands remain useful for a spot check
+- [x] Check the keyset has **2 kids, not `{}`**, after the final deploy — now **self-announcing**: an enforcing service with a zero-kid keyset refuses to start ([#12](https://github.com/rossoctl/eventing-lab/issues/12), merged), and `k8s_deploy.py` reads the startup line back from the pod (`2b632af`)
 - [ ] Start the runner **log capture loop** before the flow — the pod is gone ~30 s after the work drains
 - [ ] Pre-pull images on the node (a cold pull is 5.1 s of the wake at 245 MB)
 - [ ] Decide **R1/SPIRE: build the gate, or cut the beat and name the upgrade path**
+- [ ] **Run §8.3's identity gate on a cluster.** Built and tested, never executed — needs `--overlay kind-signed-auth`, the `CHANGEME` logins replaced, and `DEMO_GH_TOKEN` exported ([#14](https://github.com/rossoctl/eventing-lab/issues/14))
 - [ ] Decide whether the §10.1 allowlist-drift stage makes the cut — ~1 hour now that enforcement is in
 - [ ] Re-run the suite and quote the **collected** count with its environment, not a bare pass figure
 - [ ] Do not expose the public Route during the conference, or set `EB_AUTH_TOKENS` — [eventing-lab#1](https://github.com/rossoctl/eventing-lab/issues/1) is an unauthenticated `PUT /transcript` that rewrites what an agent resumes from

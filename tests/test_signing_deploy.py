@@ -18,7 +18,9 @@ import pytest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "scripts"))
 
 import gen_signing_keys as G  # noqa: E402
+import k8s_deploy as D  # noqa: E402
 from k8s_deploy import ensure_signing_material  # noqa: E402
+from k8slib import Kubectl  # noqa: E402
 from proclib import Checks, Result  # noqa: E402
 
 from shared import ce, keyset  # noqa: E402
@@ -520,3 +522,28 @@ def test_kind_signed_is_an_accepted_overlay_for_preflight():
     never saw the problem."""
     args = PF.build_args(["--overlay", "kind-signed"])
     assert args.overlay == "kind-signed"
+
+
+@pytest.mark.parametrize("overlay", ["kind-signed", "kind-signed-auth"])
+def test_the_key_material_guard_fires_for_every_signed_overlay(monkeypatch, overlay):
+    """The guard in `main()` used to read `args.overlay == "kind-signed"` exactly —
+    the same name-equality bug this PR fixed in `signed_beats`. `kind-signed-auth`
+    inherits both enforcement flags from `kind-signed`, so a deploy with no key
+    material and no `--signing-keys` must be refused for it too, rather than walking
+    past the one guard that exists to stop a cluster that refuses every event with no
+    obvious cause."""
+    monkeypatch.setattr(Kubectl, "get", lambda *a, **k: None)
+    with pytest.raises(SystemExit):
+        D.main(["--overlay", overlay])
+
+
+def test_the_key_material_guard_does_not_fire_for_an_unsigned_overlay(monkeypatch):
+    """The converse of the above: an overlay that enforces nothing must not be
+    blocked for lacking key material it will never read."""
+    monkeypatch.setattr(Kubectl, "get", lambda *a, **k: None)
+    # check-only short-circuits before anything that needs a real cluster.
+    try:
+        D.main(["--overlay", "kind", "--check-only"])
+    except SystemExit as e:
+        assert e.code in (0, None), (
+            "the unsigned overlay must not die on the key-material guard")

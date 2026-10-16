@@ -819,7 +819,7 @@ def build_args(argv=None):
     # own args and passes them straight into `Preflight` (k8s_deploy.py:688), so
     # `kind-signed` was always validated there, by that script's own `choices`.
     ap.add_argument("--overlay", default="test",
-                    choices=("test", "kind", "demo", "kind-signed"))
+                    choices=("test", "kind", "demo", "kind-signed", "kind-signed-auth"))
     ap.add_argument("--registry", default=os.environ.get("REGISTRY_PREFIX", DEFAULT_REGISTRY))
     ap.add_argument("--tag", default=os.environ.get("TAG", DEFAULT_TAG))
     ap.add_argument("--phase", default="pre", choices=("pre", "public", "all"))
