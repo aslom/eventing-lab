@@ -8,9 +8,9 @@ thing you hold while recording.
 **Read this first:** every act below is marked **🟢 DOABLE TODAY**, **🟡 PARTIAL**, or
 **🔴 NEEDS WORK**. The marks are the point of the document. **Seven of the eight acts are
 recordable**, all seven now verified against a Kind cluster rather than scripted-and-hoped;
-one needs code that does not exist and is cut. Five further beats sit below the acts: two that
-ran on the cluster and are recordable (§8.1, §8.2), one built and tested but not yet run on a
-cluster (§8.3, the identity gate), one built but without a stage, one needing SPIRE.
+one needs code that does not exist and is cut. Five further beats sit below the acts: three
+that ran on the cluster and are recordable (§8.1, §8.2, §8.3 — the identity gate, with a real
+GitHub sign-in), one built but without a stage, one needing SPIRE.
 
 Nothing here is narrated over a system that does not do it. Where a beat is cut, the script
 says what to say instead — per the talk's own thesis, an unchecked control claim is the
@@ -32,7 +32,7 @@ failure mode with no recovery.
 | **8** | Blocked egress on a wrong-scope call | 🔴 **NEEDS WORK** | **cut it** — see §9 |
 | **—** | Scale-to-zero then `/continue` (stage 2c) | 🟢 **DOABLE TODAY** | — |
 | **—** | Replay guard drops stale requests (T5.6) | 🟢 **DOABLE TODAY** | — |
-| **—** | Identity gate — unauthenticated refused, approved user accepted (§8.3) | 🟡 **PARTIAL** | built + 17 tests; **not yet run on a cluster** |
+| **—** | Identity gate — unauthenticated refused, approved user accepted (§8.3) | 🟢 **DOABLE TODAY** | — |
 | **—** | Allowlist drift between submit and wake | 🟡 **PARTIAL** | enforcement verified; needs a demo stage |
 | **—** | No SVID, no consumption | 🔴 **NEEDS WORK** | no SPIRE anywhere |
 
@@ -119,10 +119,43 @@ on screen and what to say over it.
   without `--tag` returns to the registry and silently runs stale code — which is how the run
   spent an evening narrating a signing demo against an image with no signing code in it.
 
-  **This is the standing procedure, not a temporary workaround.**
+  **`--tag` now actually applies.** Until 2026-10-19 it was parsed and ignored — declared in
+  `build_args` and referenced nowhere else — so passing `--tag local1` did *not* prevent the
+  `:dev` reset, and what produced a working local-image deployment was the manual `kubectl
+  patch` pair, not the flag. `k8s_deploy.py` now patches both Deployments to the tag and
+  relaxes `imagePullPolicy` to `IfNotPresent` for any non-default tag, so the one command is
+  enough:
+
+  ```sh
+  python3 scripts/build_images.py --local --tag local1   # --local: a podman host has no
+                                                         # buildx --builder, and we want a
+                                                         # single-arch image loaded locally
+  kind load docker-image \
+    quay.io/aslomnet/rossoctl-eventbridge:local1 \
+    quay.io/aslomnet/rossoctl-eventrunner:local1 --name kev1
+  python3 scripts/k8s_deploy.py --yes --overlay kind-signed --tag local1 \
+    --signing-keys ~/.eventing-keys
+  ```
+
+  **A `--tag` deploy then diffs forever, and that is expected.** The overlay renders `:dev`,
+  so once both Deployments are patched to `:local1` the live state disagrees with the render
+  and §14.1's `kubectl diff` reports cluster-side drift on every later run — while the digest,
+  stamped from the *unpatched* render, keeps matching. The cheap gate says "unchanged" and the
+  authoritative one says "drifted". So on a second `--tag` deploy the `deploy not needed` fast
+  path is unreachable: pass `--force-deploy`, or deploy without `--tag` to return to the
+  rendered state. `k8s_deploy.py` prints this as a note rather than leaving it to be found as
+  an unexplained "drift detected" on a cluster nobody touched.
+
   [eventing-lab#9](https://github.com/rossoctl/eventing-lab/issues/9) proposed a `kind-local`
-  overlay and was closed without one being built, so the patches have to be reapplied after
-  *every* `k8s_deploy.py` invocation — it resets both Deployments to `:dev` and `Always`.
+  overlay and was closed without one being built. The `--tag` fix makes that unnecessary **for
+  the stale-image bug, and not for change detection** — a two-line `images:` transformer would
+  make the tag part of the render, so the digest and the diff both stay meaningful and no patch
+  is needed. Worth reopening #9 with that narrower scope.
+
+  **Restart the port-forward after any deploy that changes an image.** A forward binds to one
+  pod and does not follow its replacement, so a rollout silently kills it — and the failure
+  surfaces three stages later as `Remote end closed connection without response`, not as
+  "your tunnel is gone".
 
   Then **verify the running images actually contain the signing code**. This is the step
   whose absence caused the evening above. **Preflight check 14 now does this automatically**
@@ -409,13 +442,43 @@ asked is worth more than the 30 seconds it costs.
 
 ### 8.3 The identity gate — who *asked*  (R-identity)
 
-🟡 **PARTIAL — built, not yet run on a cluster.** The stage is implemented
-(`assert_identity_gate`, `k8s_demo_flow.py`) with tests, including three that drive it
-against a deliberately-broken bridge and require it to fail. **It has not run against a
-cluster**, so do not mark it 🟢 or narrate it as verified until it has —
-[eventing-lab#14](https://github.com/rossoctl/eventing-lab/issues/14).
+🟢 **DOABLE TODAY.** Verified on a cluster 2026-10-19 with a real GitHub sign-in:
+`identity: mrsabath via github; submitter covered by the signature`, inside a run that
+reported **ALL 64 CHECKS PASSED**. The stage is `assert_identity_gate`
+(`k8s_demo_flow.py`), with tests including three that drive it against a
+deliberately-broken bridge and require it to fail.
 
-Needs its own overlay and a credential:
+Needs its own overlay and a credential. **Two ways to get the credential, and the
+difference is worth one sentence on the slide.**
+
+**The real one — GitHub sign-in in a browser** (`kind-signed-device`). Use this for the
+recording: it is what a user would actually do, and it shows a human signing in rather
+than pasting a token from a settings page.
+
+```sh
+# Prints a short code, opens github.com/login/device, polls until you authorise.
+eval "$(python3 scripts/login.py --client-id Ov23liA2Z4jfbFRoJKZn --open --export)"
+python3 scripts/k8s_deploy.py --yes --overlay kind-signed-device \
+  --signing-keys ~/.eventing-keys
+python3 scripts/k8s_demo_flow.py --overlay kind-signed-device \
+  --gh-login "$DEMO_GH_LOGIN" --public-url http://127.0.0.1:18080 --tag local1
+```
+
+`--open` is opt-in: the default prints the URL instead, because auto-opening fails
+silently over SSH and inside a container, which is where this is most often run (§2.2).
+The code appears **before** any browser launch, so a failed launch is not a dead end.
+
+**Check `DEMO_GH_LOGIN` is actually set.** `login.py` reads the login back from
+`GET /user` after the token arrives, and that call can fail on its own (rate limit, a
+network blip) while the token is perfectly valid — so the command exits 0, `--export`
+emits `DEMO_GH_TOKEN` with no `DEMO_GH_LOGIN`, and the invocation above then passes
+`--gh-login ""`. Every ordinary stage still authenticates; only `assert_identity_gate`
+skips, and the run reports success having never exercised the beat this overlay exists
+for. Both scripts now warn loudly on stderr when this happens — if you see it, pass
+`--gh-login <your-login>` by hand.
+
+**The deterministic one — a Personal Access Token** (`kind-signed-auth`). Use this in CI
+or when you do not want a browser in the loop:
 
 ```sh
 export DEMO_GH_TOKEN=ghp_...        # env only — a flag would reach `ps`
@@ -425,8 +488,18 @@ python3 scripts/k8s_demo_flow.py --overlay kind-signed-auth \
   --gh-login <your-login> --public-url http://127.0.0.1:18080 --tag local1
 ```
 
-Edit `EB_ALLOWED_USERS` and `ER_ALLOWED_SUBMITTERS` in
-`k8s/overlays/kind-signed-auth/` first — both ship as `CHANGEME` placeholders on purpose.
+Edit `EB_ALLOWED_USERS` and `ER_ALLOWED_SUBMITTERS` in whichever overlay you use first —
+both ship as `CHANGEME` placeholders on purpose, so a committed overlay never approves a
+specific person on every cluster it reaches.
+
+**Two things about the device flow that are worth saying out loud:**
+
+- **It needs no client secret**, which is why the client id is committed in the overlay
+  rather than mounted as a Secret. A redirect-based flow would need EventBridge to host
+  a callback at a URL GitHub can reach — and the demo runs behind a VPN, so that is
+  exactly what it cannot do. The device flow inverts it: nothing has to reach us.
+- **It requests no scopes.** `GET /user` returns the login for an unscoped token, so the
+  credential cannot read a repository even if it leaks.
 
 **On screen:** three `POST /v0/agents` calls in a row. No credential → **401** with
 `WWW-Authenticate: Bearer realm="eventbridge"`. A junk token → **401 again**. The approved
@@ -698,7 +771,7 @@ Before you consider the demo recordable:
 
 - [x] **Run `kind-signed` end to end against a cluster** ([eventing-lab#2](https://github.com/rossoctl/eventing-lab/issues/2)) — done 2026-10-14, 54/55
 - [x] Record the run in `docs/reports/` — [`../reports/phase2-cluster-run-report.md`](../reports/phase2-cluster-run-report.md)
-- [ ] **Re-run the flow for 55/55.** Four commits in #8 (`9d5f5fd`, `2b632af`, `0065382`, `1a128bb`) postdate the last run; `2b632af` changes deploy behaviour, not just an assertion
+- [x] **Re-run the flow for a clean sweep** — done 2026-10-19: **ALL 64 CHECKS PASSED** on Kind, including the four commits from #8 that had never run, `2b632af`'s in-process keyset check, and the identity gate
 - [ ] Capture the **on-cluster signing cost** — still laptop-only at 123 ms; either measure it or stop breaking it out of the wake number
 - [ ] Confirm **which cluster** every number on every slide came from, and name the `group.initial.rebalance.delay.ms` wherever a wake time appears
 - [ ] Start the **port-forward** before recording, and use `--public-url` — the ingress drops ~40% of POSTs ([#9](https://github.com/rossoctl/eventing-lab/issues/9))
@@ -707,7 +780,7 @@ Before you consider the demo recordable:
 - [ ] Start the runner **log capture loop** before the flow — the pod is gone ~30 s after the work drains
 - [ ] Pre-pull images on the node (a cold pull is 5.1 s of the wake at 245 MB)
 - [ ] Decide **R1/SPIRE: build the gate, or cut the beat and name the upgrade path**
-- [ ] **Run §8.3's identity gate on a cluster.** Built and tested, never executed — needs `--overlay kind-signed-auth`, the `CHANGEME` logins replaced, and `DEMO_GH_TOKEN` exported ([#14](https://github.com/rossoctl/eventing-lab/issues/14))
+- [x] **Run §8.3's identity gate on a cluster** — done 2026-10-19 via the device flow (`kind-signed-device`), signed in as a real GitHub user
 - [ ] Decide whether the §10.1 allowlist-drift stage makes the cut — ~1 hour now that enforcement is in
 - [ ] Re-run the suite and quote the **collected** count with its environment, not a bare pass figure
 - [ ] Do not expose the public Route during the conference, or set `EB_AUTH_TOKENS` — [eventing-lab#1](https://github.com/rossoctl/eventing-lab/issues/1) is an unauthenticated `PUT /transcript` that rewrites what an agent resumes from

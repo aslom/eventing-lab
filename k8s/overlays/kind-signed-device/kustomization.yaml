@@ -1,0 +1,64 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: kev1
+
+# `kind-signed` plus the REAL GitHub sign-in: the device flow, not a Personal Access
+# Token. This is the overlay for the §8.3 identity beat when you want to show a human
+# signing in on camera rather than pasting a token from a settings page.
+#
+# Difference from `kind-signed-auth`, which is the PAT overlay:
+#
+#   kind-signed-auth    EB_ALLOWED_USERS only. Approved-list mode: any GitHub token
+#                       belonging to an approved login is accepted, no OAuth App
+#                       involved. Deterministic, offline-ish, right for CI.
+#   kind-signed-device  BOTH halves — client id AND the approved list. The full
+#                       control: a token this OAuth App issued, for a login on the
+#                       list. `scripts/login.py` drives the flow.
+#
+# **Why the device flow and not a web redirect.** A redirect needs EventBridge to host a
+# callback at a URL GitHub can reach, and the demo runs on a laptop behind a VPN — so
+# that is exactly what it cannot do. The device flow inverts it: the CLI asks GitHub for
+# a code, the user types the code into a page GitHub already hosts, and the CLI polls.
+# Nothing has to reach us. It also needs **no client secret**, which is why the client
+# id below is committed rather than mounted as a Secret.
+#
+# The client id is NOT a credential. Device-flow apps have no secret; possession of the
+# id lets someone start a sign-in that only a human with a GitHub account can complete,
+# and the approved-user list still decides who gets through.
+#
+# Drive it with:
+#   eval "$(python3 scripts/login.py --client-id Ov23liA2Z4jfbFRoJKZn --open --export)"
+#   python3 scripts/k8s_deploy.py --yes --overlay kind-signed-device \
+#       --signing-keys ~/.eventing-keys
+#   python3 scripts/k8s_demo_flow.py --overlay kind-signed-device \
+#       --gh-login "$DEMO_GH_LOGIN" --public-url http://127.0.0.1:18080 --tag local1
+resources:
+  - ../kind-signed
+
+patches:
+  - target:
+      kind: ConfigMap
+      name: eventing-config
+    patch: |-
+      # The OAuth App that issues the device codes. Device Flow must be ticked on the
+      # app page at https://github.com/settings/developers — `start_device_flow` gives
+      # `device_flow_disabled` its own error message because forgetting it is the most
+      # common setup mistake.
+      - op: add
+        path: /data/EB_GITHUB_CLIENT_ID
+        value: "Ov23liA2Z4jfbFRoJKZn"
+      # Setting the client id ALONE would refuse everyone: sign-in activates, the
+      # approved list is empty, and an empty list approves nobody (that reading is
+      # deliberate — the other one turns a missing variable into an open door). So the
+      # list is set here too, and it is the half that actually authorizes.
+      #
+      # REPLACE with your own login before deploying.
+      - op: add
+        path: /data/EB_ALLOWED_USERS
+        value: "CHANGEME-your-github-login"
+      # The runner-side half, checked AFTER the signature so `ce_submitter` is
+      # trustworthy — the attribute is in `signing.SIGNED_ATTRS`, so a forger cannot
+      # claim an approved login without breaking the signature.
+      - op: replace
+        path: /data/ER_ALLOWED_SUBMITTERS
+        value: "CHANGEME-your-github-login"

@@ -540,9 +540,27 @@ class Handlers:
         sess = session["sessionuuid"]
         store.upsert_session(correlationid, sess, session["workdir"], None)
         turn_index = store.insert_prompt(correlationid, "continue", prompt)
+        # Who asked, WITHOUT gating the route. `/continue` is deliberately open —
+        # `tests/test_auth.py::test_continue_stays_open_for_the_ntfy_action_button`
+        # pins that, and §3.1 gives the reason: guarding it would need a token inside
+        # every phone notification, so the unguessable correlationid is the credential.
+        #
+        # But publishing with NO submitter is a different thing, and it was a silent
+        # failure (eventing-lab#20, found on a cluster 2026-10-19). With
+        # `ER_ALLOWED_SUBMITTERS` set, `consume.py` refuses an event whose submitter is
+        # absent — correctly, it is not on the list — while this route has already
+        # answered 202. The client is told its work was accepted and the turn never
+        # runs; it sits on the topic until the age guard sweeps it. Two of three
+        # failures in that day's demo sweep were this.
+        #
+        # So: resolve the caller, ignore the refusal status, and stamp what we learn.
+        # An anonymous caller stamps nothing and behaves exactly as before.
+        caller, _status, _why = self._caller(environ)
         event_id = self.producer.publish_request(
             prompt=prompt, correlationid=correlationid, sessionuuid=sess,
             mode="continue", subject="resume",
+            submitter=caller.userid if caller else None,
+            submitter_iss=caller.submitter_iss if caller else None,
             userkey=owner,
         )
         next_seq = len(store.events_for(correlationid)) + 1
@@ -573,9 +591,13 @@ class Handlers:
                 sess = session["sessionuuid"]
                 store.upsert_session(correlationid, sess, session["workdir"], None)
                 store.insert_prompt(correlationid, "continue", prompt)
+                # Same as `continue_agent`: stamp the submitter, do not gate.
+                caller, _s, _w = self._caller(environ)
                 self.producer.publish_request(
                     prompt=prompt, correlationid=correlationid, sessionuuid=sess,
                     mode="continue", subject="resume",
+                    submitter=caller.userid if caller else None,
+                    submitter_iss=caller.submitter_iss if caller else None,
                     userkey=owner,
                 )
         start_response("303 See Other", [("Location", f"/v0/agents/{correlationid}")])

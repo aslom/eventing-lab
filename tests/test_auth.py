@@ -241,3 +241,49 @@ def test_healthz_stays_open(tmp_path):
     h, _, _ = _api(tmp_path, TOKENS)
     status, _, _ = _call(h.healthz)
     assert status.startswith("200")
+
+
+def test_continue_stamps_the_submitter_even_though_it_is_not_guarded(tmp_path):
+    """The silent half of eventing-lab#20, found on a cluster.
+
+    `/continue` is deliberately open (see
+    `test_continue_stays_open_for_the_ntfy_action_button` above, and §3.1: guarding it
+    would need a token inside every phone notification). But it published with NO
+    submitter, and that is a different thing: with `ER_ALLOWED_SUBMITTERS` set,
+    `consume.py` refuses an event whose submitter is absent — correctly, it is not on
+    the list — while this route has already answered 202.
+
+    The client is told its work was accepted and the turn never runs. In the
+    2026-10-19 demo sweep that cost two 300-second timeouts, and the transcript showed
+    turn 1 with `submitter: mrsabath` beside turns 2 and 3 with `submitter: null`.
+
+    Open and unattributed are separable, and this is the attribution half.
+    """
+    h, _, producer = _api(tmp_path, TOKENS)
+    _, _, body = _call(h.start_agent, method="POST", body={"prompt": "hi"},
+                       **_bearer("s3cret-alice"))
+    corr = json.loads(body)["correlationid"]
+
+    status, _, _ = _call(h.continue_agent, method="POST", body={"prompt": "more"},
+                         correlationid=corr, **_bearer("s3cret-alice"))
+    assert status.startswith("202")
+    cont = [r for r in producer.requests if r.get("mode") == "continue"]
+    assert len(cont) == 1, f"expected one continue request, got {producer.requests}"
+    assert cont[0]["submitter"] == "alice", (
+        f"a continued turn must carry who asked, got {cont[0].get('submitter')!r} — "
+        f"ER_ALLOWED_SUBMITTERS refuses an absent submitter and the turn never runs")
+
+
+def test_an_anonymous_continue_still_works_and_stamps_nothing(tmp_path):
+    """The ntfy button posts with no credential, and that must keep working. Stamping
+    is best-effort: resolve the caller, ignore the refusal, publish either way."""
+    h, _, producer = _api(tmp_path, TOKENS)
+    _, _, body = _call(h.start_agent, method="POST", body={"prompt": "hi"},
+                       **_bearer("s3cret-alice"))
+    corr = json.loads(body)["correlationid"]
+
+    status, _, _ = _call(h.continue_agent, method="POST", body={"prompt": "more"},
+                         correlationid=corr)
+    assert status.startswith("202"), "an unauthenticated /continue must still be 202"
+    cont = [r for r in producer.requests if r.get("mode") == "continue"]
+    assert len(cont) == 1 and cont[0]["submitter"] is None

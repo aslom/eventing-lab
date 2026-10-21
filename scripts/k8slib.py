@@ -184,6 +184,24 @@ class Kubectl:
         return [v["name"] for v in dig(crd, "spec", "versions", default=[])
                 if v.get("served")]
 
+    def node_images(self) -> set[str]:
+        """Every image reference the kubelets report as present on a node.
+
+        `status.images[].names` is how a locally loaded image (`kind load`, `minikube
+        image load`) is visible at all: it is on the node and in no registry, so an
+        anonymous manifest GET returns 404 for it. Reading the node is also what the
+        kubelet itself would consult before pulling.
+
+        Names include digest forms as well as tags, so callers should test membership
+        of the exact `repo:tag` they are about to run.
+        """
+        out: set[str] = set()
+        for n in self.items("nodes", namespace=False):
+            for img in dig(n, "status", "images", default=[]) or []:
+                for name in img.get("names") or []:
+                    out.add(name)
+        return out
+
     def node_architectures(self) -> set[str]:
         return {dig(n, "status", "nodeInfo", "architecture", default="?")
                 for n in self.items("nodes", namespace=False)}
@@ -251,6 +269,18 @@ class Kubectl:
         if server_dry_run:
             args.append("--dry-run=server")
         return self.call(args, namespace=namespace, stdin=manifest, timeout=120)
+
+    def patch(self, target: str, body: str, *,
+              namespace: str | None | bool = None,
+              patch_type: str = "strategic") -> "Result":
+        """`kubectl patch <target> -p <body>`. Body on the command line, not stdin.
+
+        `kubectl patch` has no `-f -` form for the patch itself, so the body does go
+        into argv — fine here, because every caller passes a manifest fragment and
+        never a credential. Anything secret belongs in `apply_stdin`.
+        """
+        return self.call(["patch", target, "--type", patch_type, "-p", body],
+                         namespace=namespace)
 
     def kustomize(self, path: str) -> str:
         """Rendered overlay YAML. The input to the §14.1 manifest digest.

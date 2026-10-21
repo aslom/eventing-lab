@@ -54,6 +54,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -182,6 +183,84 @@ COLD_PROMPT = ("Once more: what was the codeword? Reply with just the codeword. 
 CODEWORD = "FLOW-7321"
 
 
+# Hosts the default Authorization header may be sent to, populated by
+# `credential_host` once the base URL is known. Empty until then, which is why the
+# handler sends nothing before `stage0()` resolves the Route or `--public-url`.
+_CREDENTIALLED_HOSTS: set[str] = set()
+
+
+def credential_host(base: str) -> None:
+    """Allow the default Authorization header for this base URL's host.
+
+    `req.host` includes the port, so `127.0.0.1:18080` and `127.0.0.1:30080` are
+    distinct entries — correct here, where a port-forward and a NodePort are different
+    endpoints that happen to share a hostname.
+    """
+    host = urllib.parse.urlsplit(base).netloc
+    if host:
+        _CREDENTIALLED_HOSTS.add(host)
+
+
+def install_default_credential(token: str | None) -> bool:
+    """Make every request this script sends to the EventBridge base carry
+    `Authorization: Bearer <token>`.
+
+    Installed as a urllib opener rather than threaded through ~19 call sites, because
+    the stages reach the API in three different shapes — `get_json`, bare
+    `urlopen(url)` and bare `urlopen(Request)` — and a header added to only some of
+    them is the bug this fixes in a quieter form.
+
+    **Why this is needed at all.** On an auth-enabled overlay EventBridge refuses an
+    unauthenticated `POST /v0/agents` with 401, which is the control working. But the
+    ordinary stages are not the identity beat: they are about scaling, signing and
+    causation, and they have to get *through* the front door to exercise any of it.
+    Before this, the whole flow stopped at stage 1 against `kind-signed-device` —
+    found on a cluster on 2026-10-19, after the overlay was added without the stages
+    being taught to sign in.
+
+    `assert_identity_gate` deliberately bypasses this: it builds its own headers so it
+    can send no credential, a bad one, then a good one. A default applied there would
+    make its first two assertions untestable.
+
+    Returns True when a credential was installed, so callers can say so.
+    """
+    token = (token or "").strip()
+    if not token:
+        return False
+
+    bearer = f"Bearer {token}"
+
+    class _Auth(urllib.request.BaseHandler):
+        # Runs before the request goes out, for every opener-routed call — including
+        # each hop of a redirect chain, which is what makes the strip below reachable.
+        def http_request(self, req):
+            # Host-scoped on purpose. This is a GLOBAL opener, and urllib's
+            # HTTPRedirectHandler copies every header but content-length/content-type
+            # onto the redirect target — ACROSS ORIGINS, with no same-host rule. So an
+            # unconditional header would hand a live GitHub token to whatever a 302
+            # from an operator-supplied `--public-url` points at, and the flow does
+            # follow redirects (`/v0/groups/{gid}`, `/v0/agents/{corr}/transcript`).
+            # The token is unscoped, which bounds the damage; that is a reason not to
+            # mind a leak, not a reason to permit one.
+            if req.host in _CREDENTIALLED_HOSTS:
+                if not req.has_header("Authorization"):
+                    req.add_header("Authorization", bearer)
+                return req
+            # ADDING the header only on the right host is not enough, which a test
+            # caught rather than a reading: by the time the redirect is followed the
+            # header is ALREADY on the copied Request, so a guard that merely declines
+            # to add one leaves the first hop's credential in place and the token goes
+            # off-host anyway. Only OUR header is removed — an explicit one a caller
+            # set for that host is theirs to send.
+            if req.get_header("Authorization") == bearer:
+                req.remove_header("Authorization")
+            return req
+        https_request = http_request
+
+    urllib.request.install_opener(urllib.request.build_opener(_Auth()))
+    return True
+
+
 def get_json(url, *, timeout=10.0, method="GET", body=None, headers=None):
     req = urllib.request.Request(url, data=body, method=method)
     if body is not None:
@@ -191,6 +270,14 @@ def get_json(url, *, timeout=10.0, method="GET", body=None, headers=None):
     with urllib.request.urlopen(req, timeout=timeout) as r:
         raw = r.read()
         return r.status, (json.loads(raw) if raw else None)
+
+
+# An opener with none of our handlers, used by `post_expecting_refusal` so the
+# identity beat can genuinely send NO credential. `install_default_credential`
+# installs a global opener, and a default Authorization header reaching that stage's
+# first two requests would make "refused without a credential" and "refused with a bad
+# one" unassertable — the beat would be narrating a control it had stopped exercising.
+_BARE_OPENER = urllib.request.build_opener()
 
 
 def post_expecting_refusal(url, *, body=None, headers=None, timeout=10.0):
@@ -212,7 +299,9 @@ def post_expecting_refusal(url, *, body=None, headers=None, timeout=10.0):
     for name, value in (headers or {}).items():
         req.add_header(name, value)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        # `_BARE_OPENER`, not `urlopen`: see the comment above it. The identity beat's
+        # first two requests must carry exactly the credential this call was given.
+        with _BARE_OPENER.open(req, timeout=timeout) as r:
             raw = r.read()
             return r.status, r.headers, (json.loads(raw) if raw else None)
     except urllib.error.HTTPError as e:
@@ -346,6 +435,10 @@ class Flow:
         self.base = self.args.public_url or pf.route_url()
         if not self.c.expect(bool(self.base), f"public URL: {self.base or '(none)'}"):
             return
+        # The installed default credential is host-scoped and this is where the host
+        # becomes known, so registration belongs here rather than at install time —
+        # which runs before any of this is resolved. See `install_default_credential`.
+        credential_host(self.base)
         self.c.expect(self.k.ready_replicas("eventbridge", namespace=self.ns) >= 1,
                       "EventBridge is up — it stays at 1 replica BY DESIGN (§8.6); "
                       "it is the agent that scales to zero")
@@ -1411,7 +1504,8 @@ def build_args(argv=None):
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--namespace", "-n", default=os.environ.get("NS", "kev1"))
     ap.add_argument("--overlay", default="test",
-                    choices=("test", "kind", "kind-signed", "kind-signed-auth", "demo"))
+                    choices=("test", "kind", "kind-signed", "kind-signed-auth",
+                             "kind-signed-device", "demo"))
     ap.add_argument("--kubeconfig", default=None,
                     help="kubeconfig file (e.g. .kube/config-kind for a Kind cluster)")
     ap.add_argument("--context", default=None)
@@ -1470,6 +1564,29 @@ def main(argv=None) -> int:
     c.log(f"context={k.current_context()} namespace={args.namespace} "
           f"overlay={args.overlay} "
           f"({'mock — free and deterministic' if f.mock else 'REAL claude, costs tokens'})")
+
+    # Sign in for the ORDINARY stages, before any of them run. On an auth-enabled
+    # overlay EventBridge refuses an unauthenticated POST with 401 — correctly — and
+    # the scaling, signing and causation beats all have to get through the front door
+    # to exercise anything. `assert_identity_gate` is unaffected: it builds its own
+    # headers so it can still send none, a bad one, then a good one.
+    if install_default_credential(os.environ.get("DEMO_GH_TOKEN")):
+        c.log("DEMO_GH_TOKEN found — requests carry Authorization: Bearer <token>")
+        # The mirror of the warning below, and the one that bites quietly: with a token
+        # but no login, every ordinary stage authenticates fine and only
+        # `assert_identity_gate` skips — so an auth-enabled overlay reports a green
+        # sweep having never exercised the thing it exists for. `login.py` warns when
+        # `fetch_login` fails and leaves DEMO_GH_LOGIN unset, which is how you arrive
+        # here; saying it on both sides closes the loop.
+        if not (args.gh_login or "").strip() and args.overlay.startswith("kind-signed"):
+            c.log("NOTE: DEMO_GH_TOKEN is set but --gh-login is empty, so the "
+                  "identity beat will SKIP while every other stage authenticates. "
+                  f"On {args.overlay} that is the beat the overlay exists for — "
+                  "pass --gh-login <login> (login.py prints DEMO_GH_LOGIN).")
+    elif args.gh_login:
+        c.log("NOTE: --gh-login given but DEMO_GH_TOKEN is not set. On an "
+              "auth-enabled overlay every stage will be refused 401. Run: "
+              "eval \"$(python3 scripts/login.py --client-id <id> --export)\"")
 
     f.stage0()
     if not f.base:

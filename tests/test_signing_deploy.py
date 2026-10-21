@@ -331,6 +331,7 @@ def test_force_still_rotates_every_key(tmp_path):
 # the wiring, neither of which needs a cluster. The probe pod itself does — see the
 # PR, and eventing-lab#14.
 
+import re  # noqa: E402
 import shutil  # noqa: E402
 import subprocess  # noqa: E402
 
@@ -547,3 +548,238 @@ def test_the_key_material_guard_does_not_fire_for_an_unsigned_overlay(monkeypatc
     except SystemExit as e:
         assert e.code in (0, None), (
             "the unsigned overlay must not die on the key-material guard")
+
+
+# ---- a locally loaded image is not in any registry (found on a cluster) -----
+#
+# Checks 4 and 14 both demanded HTTP 200 from an anonymous manifest GET, which made
+# them unreachable for the documented local-image path: an image built with
+# `build_images.py --local` and `kind load`ed is ON THE NODE and in NO registry, so the
+# registry answers 404 by design. Found on 2026-10-19 by running preflight against a
+# `:local2` build that was sitting on the node — both checks hard-failed with
+# "make the repository public again", which is the wrong remedy for an image that was
+# never meant to be in a registry.
+#
+# Same shape as what these checks exist to catch: an assertion about an intent (is it
+# in the registry?) standing in for the state that matters (can the node run it?).
+
+
+class _NodeImageKubectl(_FakeKubectl):
+    """A cluster whose node already holds the refs it is given."""
+
+    def __init__(self, present=()):
+        super().__init__()
+        self._present = set(present)
+        self.pods_created: list[str] = []
+
+    def node_images(self):
+        return set(self._present)
+
+    def node_architectures(self):
+        return {"arm64"}
+
+    def items(self, kind, **kw):
+        return []
+
+    def delete(self, *a, **kw):
+        return None
+
+
+def test_node_images_reads_every_name_the_kubelet_reports():
+    """`status.images[].names` is the only place a locally loaded image appears: it is
+    on the node and in no registry. This is also what the kubelet itself consults."""
+    from k8slib import Kubectl
+
+    class K(Kubectl):
+        def __init__(self):
+            pass
+
+        def items(self, kind, **kw):
+            assert kind == "nodes"
+            return [{"status": {"images": [
+                {"names": ["quay.io/x/a:local2", "quay.io/x/a@sha256:deadbeef"]},
+                {"names": ["quay.io/x/b:dev"]},
+                {},                       # a node entry with no names at all
+            ]}}]
+
+    names = K().node_images()
+    assert "quay.io/x/a:local2" in names
+    assert "quay.io/x/b:dev" in names
+    assert "quay.io/x/a@sha256:deadbeef" in names
+
+
+def test_the_signing_probe_accepts_an_image_present_on_the_node(monkeypatch):
+    """The bug. A `kind load`ed image must reach the probe rather than being rejected
+    as un-pullable — and the registry must not even be consulted for it, because the
+    answer would be a misleading 404."""
+    import k8s_preflight as PF
+
+    monkeypatch.setattr(PF, "registry_manifest",
+                        lambda ref, **kw: (404, None, "not found"))
+
+    ref = "quay.io/aslomnet/rossoctl-eventrunner:local2"
+    k = _NodeImageKubectl(present={ref})
+    c = Checks(prefix="test")
+    pf = PF.Preflight(k, c, _Args("kind-signed"))
+    # Stop before the pod: the thing under test is the gate, not the probe.
+    monkeypatch.setattr(pf.k, "apply_stdin",
+                        lambda *a, **kw: Result(argv=["kubectl"], rc=1, out="", err="",
+                                                duration_s=0.0, launched=False,
+                                                timed_out=False))
+    pf._probe_signing_code("eventrunner", ref, "eventrunner.__main__")
+    assert not any("pullable" in f for f in c.failures), \
+        f"a node-local image must pass the gate, got {c.failures}"
+
+
+def test_the_signing_probe_still_fails_an_image_that_is_nowhere(monkeypatch):
+    """The fix must not become 'skip the check'. An image neither on the node nor in a
+    registry is a real failure, and the message has to name both remedies."""
+    import k8s_preflight as PF
+    monkeypatch.setattr(PF, "registry_manifest",
+                        lambda ref, **kw: (404, None, "not found"))
+    c = Checks(prefix="test")
+    pf = PF.Preflight(_NodeImageKubectl(present=set()), c, _Args("kind-signed"))
+    pf._probe_signing_code("eventrunner", "quay.io/x/missing:local9",
+                           "eventrunner.__main__")
+    assert c.failed == 1, "a nowhere-image must fail"
+    joined = " ".join(c.failures)
+    assert "pullable or present on a node" in joined
+
+
+def test_check_4_accepts_a_node_local_image_without_asking_the_registry(monkeypatch):
+    """Check 4 had the same defect, and fixing only check 14 would leave the deploy
+    blocked one check earlier — with "make the repository public again" as the advice
+    for an image that was never meant to be in a registry."""
+    import k8s_preflight as PF
+    monkeypatch.setattr(PF, "registry_manifest",
+                        lambda ref, **kw: (404, None, "nf"))
+    c = Checks(prefix="test")
+    args = _Args("kind-signed")
+    # The refs check 4 builds come from `Images(registry, tag)`, so the node has to
+    # hold exactly those — matching on a tag the args do not use would pass this test
+    # against code that still asked the registry.
+    pf = PF.Preflight(_NodeImageKubectl(), c, args)
+    imgs = set(PF.Images(args.registry, args.tag).all())
+    pf.k._present = imgs
+    pf.check_images()
+    assert c.failed == 0, f"node-local images must pass check 4, got {c.failures}"
+
+
+# ---- --tag was accepted and ignored (found on a cluster, 2026-10-19) --------
+#
+# `--tag` was declared in `build_args` and referenced NOWHERE else in k8s_deploy.py:
+# one mention in the whole file. So `--overlay kind-signed-device --tag local2`
+# applied the base's `:dev` to both Deployments and ran whatever `:dev` happened to
+# be -- five-day-old code whose `Cfg` had no `verify_keyset_path`, so EventBridge
+# loaded no keyset and printed no signing banner.
+#
+# 51 of 52 deploy checks passed. Preflight check 14 passed too, having probed the
+# right IMAGE while the pod ran a different one. The only check that was right was
+# `_verify_keyset_enforcing`, which reads the process rather than the manifest.
+#
+# It also made a documented procedure wrong: the demo script and the 2026-10-14
+# report both say to pass `--tag local1` to avoid the `:dev` reset, and passing it
+# never did that.
+
+
+def _deploy_src() -> str:
+    return (REPO / "scripts" / "k8s_deploy.py").read_text()
+
+
+def _call_lines(src: str, name: str) -> list[int]:
+    """Line numbers where `name` is CALLED — not defined, not named in a comment.
+
+    Same helper and same reason as `tests/test_dockerfile_packaging.py`: an earlier
+    guard there passed against code with the call deleted, because a comment
+    mentioning the function and its own `def` both matched a raw text search.
+    """
+    out = []
+    for n, line in enumerate(src.splitlines(), 1):
+        code = line.split("#", 1)[0]
+        if re.search(rf"(?<!def ){re.escape(name)}\s*\(", code):
+            out.append(n)
+    return out
+
+
+def test_the_deploy_applies_the_tag_to_both_deployments():
+    """The bug: a flag that is parsed and never used is worse than no flag."""
+    src = _deploy_src()
+    called = _call_lines(src, "self._apply_image_tag")
+    assert called, "_apply_image_tag is never called"
+    applies = _call_lines(src, "apply_kustomize")
+    assert applies and any(c > min(applies) for c in called), (
+        "the tag must be applied AFTER apply_kustomize — the overlay sets `:dev`, "
+        "so patching before it would be overwritten")
+
+
+def test_the_tag_patch_sets_both_services_and_relaxes_the_pull_policy():
+    """`imagePullPolicy: Always` with a locally built tag means the kubelet goes to
+    the registry, 404s, and keeps the container already running — the stale-image
+    failure in its quietest form."""
+    src = _deploy_src()
+    body = src[src.index("def _apply_image_tag"):]
+    body = body[:body.index("\n    def ", 1)]
+    for svc in ("eventbridge", "eventrunner"):
+        assert svc in body, f"{svc} is not patched"
+    assert "IfNotPresent" in body
+    assert "DEFAULT_TAG" in body, \
+        "a :dev deploy from a registry should keep pulling — the relax must be " \
+        "conditional on a non-default tag"
+
+
+def test_the_tag_patch_says_it_will_diff_forever():
+    """§14.1 has two mechanisms and this patch defeats both: the render always says
+    `:dev`, so `kubectl diff` reports cluster-side drift on every later run, while
+    `stamp_digest` stamps the digest of the UNPATCHED render and therefore matches.
+    The cheap gate says "unchanged", the authoritative one says "drifted", and they
+    contradict each other permanently — for the one workflow the demo script tells you
+    to use. `k8s/base/configmap.yaml` states the rule from the safe side: a value the
+    manifest never mentions is merged rather than reverted. `image` IS mentioned.
+
+    Not fixable here without making the tag part of the render (the closed #9's
+    `images:` transformer), so the requirement is that it be SAID, not discovered as a
+    confusing "drift detected" on a cluster nobody touched."""
+    src = _deploy_src()
+    body = src[src.index("def _apply_image_tag"):]
+    body = body[:body.index("\n    def ", 1)]
+    assert "drift" in body.lower(), \
+        "the permanent-drift consequence must be stated, in the log and the docstring"
+    logged = [ln for ln in body.splitlines() if "self.c.log" in ln]
+    assert logged, "the note must reach the operator's log, not only the source"
+    assert "--force-deploy" in body, \
+        "the note must say what to do about it — the fast path is now unreachable"
+
+
+def test_the_drift_note_is_only_for_a_non_default_tag():
+    """A `:dev` deploy renders what it patches, so there is no drift and no note.
+    Printing one anyway would train the reader to ignore it."""
+    src = _deploy_src()
+    body = src[src.index("def _apply_image_tag"):]
+    body = body[:body.index("\n    def ", 1)]
+    note = body[body.index("self.c.log"):]
+    guard = body[:body.index("self.c.log")]
+    assert "if not default:" in guard, \
+        "the note must be guarded on a non-default tag"
+    assert "drift" in note.lower()
+
+
+def test_the_default_tag_keeps_the_registry_pull_policy():
+    """Only a NON-default tag relaxes the policy. Relaxing it for `:dev` too would
+    make a registry deploy silently prefer a stale local layer."""
+    import k8s_deploy as D
+    src = _deploy_src()
+    body = src[src.index("def _apply_image_tag"):]
+    body = body[:body.index("\n    def ", 1)]
+    assert "default = tag == DEFAULT_TAG" in body
+    assert D.DEFAULT_TAG, "DEFAULT_TAG must be a real value to compare against"
+
+
+def test_kubectl_patch_exists_and_does_not_take_a_credential():
+    """`kubectl patch` has no `-f -` form for the patch body, so it goes into argv.
+    That is fine for manifest fragments and not for secrets — anything secret has to
+    keep using `apply_stdin`, which is why this is documented on the method."""
+    from k8slib import Kubectl
+    assert hasattr(Kubectl, "patch")
+    doc = Kubectl.patch.__doc__ or ""
+    assert "apply_stdin" in doc, \
+        "the docstring must point secrets at apply_stdin"

@@ -46,7 +46,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import k8s_preflight  # noqa: E402
-from imagelib import DEFAULT_REGISTRY, DEFAULT_TAG  # noqa: E402
+from imagelib import DEFAULT_REGISTRY, DEFAULT_TAG, Images  # noqa: E402
 from k8slib import Kubectl, condition_is, condition_reason, dig, wait_for  # noqa: E402
 from proclib import Checks, die  # noqa: E402
 
@@ -438,6 +438,7 @@ class Deployer:
             self.c.log(f"  {line}")
         if self.args.dry_run:
             return
+        self._apply_image_tag()
         # §11 — the keyset AGAIN, deliberately, because the apply above just
         # overwrote it. `k8s/base/keyset-configmap.yaml` is committed holding `{}`
         # (on purpose: a key in the repo is the thing that file exists to prevent)
@@ -477,6 +478,60 @@ class Deployer:
                           "deploy/eventbridge rolled out")
         if self.args.signing_keys and not self.c.failed:
             self._verify_keyset_enforcing()
+
+    def _apply_image_tag(self) -> None:
+        """Point both Deployments at `--tag`, after the overlay has set them to `:dev`.
+
+        **`--tag` was accepted and then ignored.** It was declared in `build_args` and
+        referenced nowhere else in this file, so `--tag local2` applied the base's
+        `:dev` to both Deployments and silently ran whatever `:dev` happened to be —
+        on 2026-10-19 that was five-day-old code whose `Cfg` had no
+        `verify_keyset_path` at all, so EventBridge loaded no keyset, printed no
+        signing banner, and `_verify_keyset_enforcing` correctly reported ENFORCING
+        with 0 kid(s). Every other check was green, including preflight check 14,
+        which had probed the right image and proved nothing about the running pod.
+
+        The flag's absence also made a documented procedure wrong: the demo script and
+        the 2026-10-14 report both say to pass `--tag local1` to avoid the `:dev`
+        reset, and passing it never did that. What produced the `:local1` state was the
+        manual `kubectl patch` pair, not the flag.
+
+        `imagePullPolicy` goes with it. The base sets `Always`, which for a locally
+        built image means the kubelet goes to the registry, 404s, and keeps whatever
+        container is already running — the stale-image failure in its quietest form.
+        Only relaxed for a non-default tag: a `:dev` deploy from a registry should keep
+        pulling.
+
+        **This patch diffs forever, by construction.** The rendered overlay always says
+        `:dev` — that is the whole reason this method exists — so after the patch the
+        live Deployments disagree with the render and `kubectl diff` reports
+        cluster-side drift on every later run. `k8s/base/configmap.yaml:8-11` states the
+        rule from the other side: a value the manifest never mentions is merged rather
+        than reverted, which is why `kubectl set env` for the public URL is safe. The
+        `image` field IS mentioned, so patching it is the case that rule warns about.
+        Said out loud below rather than left to be discovered as a confusing "drift
+        detected" on a cluster nobody touched. The structural fix is to make the tag
+        part of the render (the `images:` transformer of the closed #9); until then the
+        honest report is a note, not a silent contradiction.
+        """
+        tag = (self.args.tag or "").strip()
+        if not tag:
+            return
+        images = Images(self.args.registry, tag)
+        default = tag == DEFAULT_TAG
+        for svc, ref in (("eventbridge", images.eventbridge),
+                         ("eventrunner", images.eventrunner)):
+            patch = {"spec": {"template": {"spec": {"containers": [
+                {"name": svc, "image": ref}
+                | ({} if default else {"imagePullPolicy": "IfNotPresent"})]}}}}
+            res = self.k.patch(f"deploy/{svc}", json.dumps(patch), namespace=self.ns)
+            self.c.expect_run(res, f"deploy/{svc} set to {ref}"
+                                   + ("" if default else " (IfNotPresent)"))
+        if not default:
+            self.c.log(f"note: the overlay renders `:dev`, so a --tag {tag} deploy "
+                       f"shows as cluster-side drift from here on; pass "
+                       f"--force-deploy on later runs, or deploy without --tag to "
+                       f"return to the rendered state")
 
     def _verify_keyset_landed(self) -> None:
         """Read the keyset back FROM THE CLUSTER and assert it is not empty.
@@ -609,7 +664,8 @@ def build_args(argv=None):
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--namespace", "-n", default=os.environ.get("NS", "kev1"))
     ap.add_argument("--overlay", default="test",
-                    choices=("test", "kind", "demo", "kind-signed", "kind-signed-auth"))
+                    choices=("test", "kind", "demo", "kind-signed", "kind-signed-auth",
+                             "kind-signed-device"))
     ap.add_argument("--signing-keys", default=None, metavar="DIR",
                     help="key directory from scripts/gen_signing_keys.py. Applies one "
                          "seed Secret per service plus the approved-key ConfigMap. "

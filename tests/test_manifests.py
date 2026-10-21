@@ -30,7 +30,8 @@ OVERLAYS = {"test": K8S / "overlays" / "test",
             # Added for the same reason the comment above gives for `kind-signed`:
             # an overlay absent from this dict is silently skipped by EVERY assertion
             # in this file, including the seed-path and Secret-vs-ConfigMap rules.
-            "kind-signed-auth": K8S / "overlays" / "kind-signed-auth"}
+            "kind-signed-auth": K8S / "overlays" / "kind-signed-auth",
+            "kind-signed-device": K8S / "overlays" / "kind-signed-device"}
 
 _HAVE_KUBECTL = shutil.which("kubectl") is not None
 
@@ -738,3 +739,44 @@ def test_the_auth_overlay_ships_a_placeholder_not_a_real_login():
         m = re.search(rf'{key}:\s*"?([^"\n]*)"?', cm)
         assert m and "CHANGEME" in m.group(1), \
             f"{key} should carry a CHANGEME placeholder, got {m and m.group(1)!r}"
+
+
+# ---- kind-signed-device: the real GitHub sign-in ----------------------------
+
+@needs_kubectl
+def test_the_device_overlay_sets_both_halves_of_github_signin():
+    """The client id ALONE would refuse everyone — sign-in activates, the approved
+    list is empty, and an empty list approves nobody. That reading is deliberate (the
+    other turns a missing variable into an open door), so this overlay must set both."""
+    cm = find_doc(render("kind-signed-device"), "ConfigMap", "eventing-config")
+    assert re.search(r"EB_GITHUB_CLIENT_ID:\s*\S+", cm)
+    assert re.search(r"EB_ALLOWED_USERS:\s*\S+", cm)
+
+
+@needs_kubectl
+def test_the_device_overlay_inherits_signature_enforcement():
+    """`ce_submitter` is only trustworthy because the signature covers it."""
+    cm = find_doc(render("kind-signed-device"), "ConfigMap", "eventing-config")
+    assert re.search(r'ER_REQUIRE_SIGNATURE:\s*"true"', cm)
+    assert re.search(r'EB_REQUIRE_RESPONSE_SIGNATURE:\s*"true"', cm)
+
+
+@needs_kubectl
+def test_the_device_overlay_ships_a_placeholder_login_not_a_real_one():
+    """The client id is committed because the device flow has no client secret. The
+    LOGIN is not — a committed overlay must not approve a specific person on every
+    cluster it reaches."""
+    cm = find_doc(render("kind-signed-device"), "ConfigMap", "eventing-config")
+    for key in ("EB_ALLOWED_USERS", "ER_ALLOWED_SUBMITTERS"):
+        m = re.search(rf'{key}:\s*"?([^"\n]*)"?', cm)
+        assert m and "CHANGEME" in m.group(1), f"{key} = {m and m.group(1)!r}"
+
+
+@needs_kubectl
+def test_no_overlay_mounts_a_github_client_secret():
+    """There is no client secret to mount. The device flow does not use one, and a
+    Secret named as though it held one would invite somebody to create it."""
+    for overlay in OVERLAYS:
+        rendered = render(overlay)
+        assert "GITHUB_CLIENT_SECRET" not in rendered, \
+            f"{overlay} references a client secret, which the device flow has none of"
