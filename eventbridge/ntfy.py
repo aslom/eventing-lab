@@ -146,7 +146,7 @@ def compose_title(event: dict[str, Any]) -> str:
 
 class NtfyPublisher(threading.Thread):
     def __init__(self, cfg: NtfyCfg, public_base_url: str, store=None,
-                 stores=None) -> None:
+                 stores=None, owners=None) -> None:
         super().__init__(daemon=True, name="ntfy-publisher")
         self._cfg = cfg
         self._base = public_base_url.rstrip("/")
@@ -157,13 +157,29 @@ class NtfyPublisher(threading.Thread):
         # prompt and no reply — exactly the content §4.1 says the body carries so a phone
         # that cannot reach EventBridge still sees the result.
         self._stores = stores
+        # The ownership index, when multi-tenant. It is what picks the store — see
+        # `_store_for`.
+        self._owners = owners
         self._q: queue.Queue[dict[str, Any] | None] = queue.Queue()
         self._stopping = threading.Event()
 
     def _store_for(self, event: dict[str, Any]):
-        """The store holding this event's prompt and replies."""
+        """The store holding this event's prompt and replies.
+
+        With `owners` the store is the correlation's owner, read from the ownership index
+        that `Minter` wrote at mint time. The frame's own `ce_userkey` is NOT consulted:
+        it is attacker-supplied, and a frame that omits it would otherwise be routed to
+        `shared/`, where a tenant's `group_members` row is not. An unminted correlation
+        resolves to `shared/` too, which is where it would have been routed anyway.
+        """
         if self._stores is None:
             return self._store
+        corr = event.get("correlationid")
+        if self._owners is not None and corr:
+            # `_known` is intentionally ignored: unknown correlations use `shared/`, where group_of(corr)
+            # returns None, so the event is not suppressed.
+            userkey, _known = self._owners.owner_of(corr)
+            return self._stores.for_userkey(userkey)
         return self._stores.for_event(event)
 
     def submit(self, event: dict[str, Any]) -> None:
@@ -210,12 +226,11 @@ class NtfyPublisher(threading.Thread):
         controls it — including by leaving it out. So resolve the correlation id's group
         from `group_members`, which the forger does not supply.
 
-        **Scope: the omission case is closed for single-tenant only.** In multi-tenant
-        mode the store this row is looked up in is itself chosen by `ce_userkey`, which
-        the forger also controls — a frame that keeps `ce_groupid` but omits `ce_userkey`
-        routes to `shared/`, where the membership row is not, and escapes suppression
-        exactly as before. Closing that means resolving the store from the ownership
-        index rather than the event; eventing-lab#5 tracks it.
+        **Multi-tenant: the store is chosen by the ownership index, not `ce_userkey`.**
+        A frame that keeps `ce_groupid` and omits `ce_userkey` must not be able to route
+        to `shared/` and escape suppression, so `_store_for` resolves the correlation's
+        owner from `owners` when it is wired. That is what closes the case in multi-tenant
+        mode; without `owners` the event's own userkey is still used.
         """
         store = self._store_for(event)
         if store is None:
@@ -223,8 +238,8 @@ class NtfyPublisher(threading.Thread):
         if self._cfg.group_notify_errors and event.get("phase") == "error":
             return False
         try:
-            # Routed by the event's own userkey for the same reason as the body lookup —
-            # the group row is in its owner's store.
+            # The group row lives in its owner's store, which `_store_for` now resolves
+            # from the ownership index.
             corr = event.get("correlationid")
             groupid = store.group_of(corr) if corr else None
             if groupid is None:

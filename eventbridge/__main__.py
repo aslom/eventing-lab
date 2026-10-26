@@ -188,7 +188,8 @@ def main() -> int:
     groups = GroupService(cfg, store, producer, minter, stores=stores)
 
     ntfy = NtfyPublisher(cfg.ntfy, cfg.public_base_url, store=store,
-                         stores=stores if topics.multi else None)
+                         stores=stores if topics.multi else None,
+                         owners=owners if topics.multi else None)
     if cfg.ntfy.enabled and cfg.ntfy.topic:
         ntfy.start()
 

@@ -415,11 +415,12 @@ class RecordingNtfy:
     a `group_members` row in the store this event ROUTED to" — which a single store
     can never distinguish from "the only store"."""
 
-    def __init__(self, store, notify_errors=False, stores=None):
+    def __init__(self, store, notify_errors=False, stores=None, owners=None):
         from eventbridge.config import NtfyCfg
         from eventbridge.ntfy import NtfyPublisher
         cfg = NtfyCfg(enabled=True, topic="t", group_notify_errors=notify_errors)
-        self.pub = NtfyPublisher(cfg, "http://eb.test", store=store, stores=stores)
+        self.pub = NtfyPublisher(cfg, "http://eb.test", store=store, stores=stores,
+                                 owners=owners)
         self.sent = []
         self.pub._post = lambda payload: self.sent.append(payload)
 
@@ -577,43 +578,39 @@ def test_a_member_event_that_only_claims_a_group_is_not_trusted_as_a_member(svc)
     assert len(n.sent) == 1, "the groupid on the frame cannot buy silence"
 
 
-@pytest.mark.xfail(strict=True, reason="eventing-lab#5: in multi-tenant mode the store this "
-                                      "lookup routes to is chosen by ce_userkey")
 def test_a_forged_frame_cannot_change_stores_to_escape_suppression(svc, tmp_path):
-    """The multi-tenant member of the omission class, currently open.
+    """The multi-tenant member of the omission class.
 
     The verdict is "is there a `group_members` row for this corr in the store this
-    event ROUTED to", and in multi-tenant mode the routing is `ce_userkey` — an
+    event ROUTED to". In multi-tenant mode the routing used to be `ce_userkey` — an
     attribute the forger controls exactly as they controlled `ce_groupid`. A frame
-    that keeps `ce_groupid` but omits `ce_userkey` routes to `shared/`, where the
-    membership row is not, and escapes suppression: it is pushed, and a terminal
-    `phase=error` frame pages at priority 5 with errors off.
+    that keeps `ce_groupid` but omits `ce_userkey` routed to `shared/`, where the
+    membership row is not, and escaped suppression: it was pushed, and a terminal
+    `phase=error` frame paged at priority 5 with errors off.
 
     Both sides go through one registry, so the membership row IS in the per-user
-    store the frame with its `ce_userkey` intact would route to — the only thing
-    standing between the stripped frame and suppression is the routing itself.
-
-    Pre-existing (the old code called `_store_for` too), closed for single-tenant by
-    this PR, and tracked as eventing-lab#5 — where the fix is to resolve the store
-    from the ownership index, which the forger does not supply. This test is
-    `xfail(strict=True)` so it records the hole and flips to a pass the moment the
-    fix lands."""
+    store the frame with its `ce_userkey` intact would route to. The store is now
+    chosen by the ownership index, which `Minter` writes at mint time and the forger
+    does not supply, so dropping `ce_userkey` changes nothing."""
     from eventbridge.group_service import GroupService
+    from eventbridge.owner_index import OwnerIndex
     from eventbridge.store_registry import StoreRegistry
 
     _, _, producer, cfg = svc
     reg = StoreRegistry(tmp_path, multi=True)
+    owners = OwnerIndex(tmp_path / "owners")
     s = GroupService(cfg, None, producer, SeqMinter(), stores=reg)
     gid, _ = s.create(label="batch", expected=2, userkey="gh-alice-a1b2c3d4")
     corr = s.submit_members(gid, ["a"], userkey="gh-alice-a1b2c3d4")[0]
+    owners.claim(corr, "gh-alice-a1b2c3d4")
 
-    forged = member_event(gid, corr, final=True, phase="result",
+    forged = member_event(gid, corr, final=True, phase="error",
                           userkey="gh-alice-a1b2c3d4")
     # The row is where the intact frame would look for it:
     assert reg.for_event(forged).group_of(corr) is not None
-    del forged["userkey"]          # -> shared/, where the membership row is not
+    del forged["userkey"]          # would route to shared/, where the row is not
 
-    n = RecordingNtfy(None, stores=reg)
+    n = RecordingNtfy(None, stores=reg, owners=owners)
     n.submit_and_drain(forged)
     assert n.sent == [], "dropping ce_userkey must not buy a push either"
 
