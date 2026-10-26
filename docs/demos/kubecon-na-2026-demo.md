@@ -2,8 +2,13 @@
 
 The run-of-show for **"The Seams Are the Trap: Agent Fleets from CNCF Parts You Already
 Have"** (30-minute session). Companion to [`../notes/kubecon-na-2026.md`](../notes/kubecon-na-2026.md),
-which holds the abstract, the status assessment and the reasoning; this document is the
-thing you hold while recording.
+which holds the abstract, the status assessment and the reasoning.
+
+**If the camera is rolling, you want
+[`kubecon-na-2026-screenplay.md`](kubecon-na-2026-screenplay.md) instead** — six beats,
+~4 minutes, commands only. This document is the reference behind it: every act, what each
+one does *not* prove, and the limits to say out loud. Read it to decide what to record;
+hold the screenplay while recording.
 
 **Read this first:** every act below is marked **🟢 DOABLE TODAY**, **🟡 PARTIAL**, or
 **🔴 NEEDS WORK**. The marks are the point of the document. **Seven of the eight acts are

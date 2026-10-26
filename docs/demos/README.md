@@ -11,12 +11,19 @@ being performed live in front of an audience.
 | [`phase0-demo.md`](phase0-demo.md)                             | A Kafka message wakes an agent on one laptop, and every step streams back out    |
 | [`phase1-demo.md`](phase1-demo.md)                             | The same path on Kubernetes, scaling from zero agent replicas on consumer lag    |
 | [`kubecon-na-2026-demo.md`](kubecon-na-2026-demo.md)           | The conference run-of-show on the signed path, every act marked doable or not    |
+| [`kubecon-na-2026-screenplay.md`](kubecon-na-2026-screenplay.md) | The six commands actually recorded for the talk, and the order to cut them in  |
 
-All three are runbooks you read while typing, which is why they live here rather than in
+All four are runbooks you read while typing, which is why they live here rather than in
 [`../notes/`](../notes/). `phase1-demo.md` covers all four ways to run it — locally without
 containers, under Docker, on Kind, and on OpenShift — `phase0-demo.md` is still the more
 detailed account of the laptop path, and `kubecon-na-2026-demo.md` is the signed path on Kind
 with each act marked for whether it can be recorded today.
+
+**The last two are a pair and the split is deliberate.** The run-of-show is the reference:
+every act, what it does _not_ prove, the limits to say out loud. The screenplay is the shot
+list — six beats, ~4 minutes, nothing else — because a document that answers "why does this
+beat exist" is the wrong thing to hold while a camera is running. Change a command in one and
+check the other.
 
 ## Demo vs. smoke test vs. spec
 
