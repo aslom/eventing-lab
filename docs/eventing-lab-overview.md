@@ -120,7 +120,9 @@ these, as the two are not comparable:
 | Wake latency | **1.0–5.0 s** on OpenShift (ykt1); **2.2–4.3 s** on Kind |
 | Scale back to zero | **30–31 s** at `cooldownPeriod: 30` |
 | Image pull | 5.1 s cold (245 MB); 454 ms–2.45 s warm |
-| Ed25519 sign / verify | **222 ms / 227 ms** (the cost of the pure-Python rule) |
+| Ed25519 sign | **222 ms** (the cost of the pure-Python rule; not accelerated — one signature per terminal event is not a bottleneck) |
+| Ed25519 verify | **0.14 ms** via libcrypto, **195 ms** pure Python on x86 — ~1350x. See [ADR-0002](adrs/0002-native-ed25519-with-pure-python-fallback.md) |
+| Audit a 4410-event topic | **11 s** (was 99 s, of which 93 s was verification) |
 | Group of 100 agents | **1m02s**, 0 failed |
 
 **The bug only a scale-to-zero deployment could expose.** The response emitter

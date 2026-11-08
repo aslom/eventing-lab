@@ -18,7 +18,26 @@ def spec() -> dict:
                     "operationId": "startAgent",
                     "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/StartRequest"}}}},
                     "responses": {"202": {"description": "Accepted", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/StartResponse"}}}}},
-                }
+                },
+                "get": {
+                    "summary": "Resolve a label to the correlationid of its most recent run",
+                    "description": (
+                        "`label` is REQUIRED: there is deliberately no listing of all "
+                        "agents, because every correlationid is a capability to POST a "
+                        "turn into that conversation. Authenticated even in "
+                        "single-tenant mode, since a label is a guessable string."),
+                    "operationId": "findAgentByLabel",
+                    "parameters": [{"in": "query", "name": "label", "required": True,
+                                    "schema": {"type": "string",
+                                               "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}],
+                    "responses": {
+                        "200": {"description": "The most recently started run with this label",
+                                "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AgentByLabelResponse"}}}},
+                        "400": {"description": "label missing or malformed"},
+                        "401": {"description": "not authenticated"},
+                        "404": {"description": "no agent with that label"},
+                    },
+                },
             },
             "/v0/agents/{correlationid}/continue": {
                 "post": {
@@ -266,6 +285,20 @@ def spec() -> dict:
                         "model":     {"type": "string"},
                         "max_turns": {"type": "integer", "default": 3},
                         "notify":    {"type": "boolean", "default": True},
+                        # Store-only operator bookkeeping, NOT a CloudEvent attribute:
+                        # `GET /v0/agents?label=` resolves it back to this run.
+                        "label":     {"type": "string",
+                                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
+                    },
+                },
+                "AgentByLabelResponse": {
+                    "type": "object", "required": ["correlationid", "label"],
+                    "properties": {
+                        "correlationid": {"type": "string", "pattern": "^[a-z]{3,10}-[a-z]{3,12}-\\d{4}$"},
+                        "label":         {"type": "string"},
+                        "created_utc":   {"type": "string"},
+                        "turns":         {"type": "integer"},
+                        "html_url":      {"type": "string"},
                     },
                 },
                 "StartResponse": {
@@ -276,6 +309,7 @@ def spec() -> dict:
                         "event_id":      {"type": "string"},
                         "topic":         {"type": "string"},
                         "html_url":      {"type": "string"},
+                        "label":         {"type": "string"},
                     },
                 },
                 "ContinueRequest": {

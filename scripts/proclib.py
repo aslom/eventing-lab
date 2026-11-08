@@ -95,18 +95,30 @@ class Result:
 
 def run(argv: Sequence[str], *, timeout: float = 120.0, stdin: str | None = None,
         env: dict[str, str] | None = None, cwd: str | None = None,
-        merge_stderr: bool = False) -> Result:
+        merge_stderr: bool = False, stream: bool = False) -> Result:
     """Run argv (a LIST — never a shell string) and capture its output.
 
     Never raises for a non-zero exit code; inspect `Result.ok`. Raises nothing
     for a missing binary either — that comes back as `launched=False`, so a
     caller that forgets to check still records a FAIL rather than a PASS.
+
+    `stream=True` ALSO tees the output to this process as it arrives — stdout to
+    stdout, stderr to stderr — while still capturing both into the `Result`. It
+    exists for commands long enough that silence is indistinguishable from a
+    hang, and it keeps the two streams separate on purpose: a caller that pipes
+    our stdout (`| tail -8`) must not find progress chatter in the pipe. The
+    captured copy is byte-identical to the non-streaming form, so a caller that
+    greps `Result.out` behaves the same either way.
     """
     if isinstance(argv, (str, bytes)):
         raise TypeError("run() takes an argv list, not a shell string — "
                         "that is the quoting bug this module exists to avoid")
     argv = tuple(str(a) for a in argv)
     started = time.monotonic()
+    if stream:
+        return _run_streaming(argv, timeout=timeout, stdin=stdin, env=env,
+                              cwd=cwd, merge_stderr=merge_stderr,
+                              started=started)
     try:
         p = subprocess.run(
             argv, capture_output=not merge_stderr,
@@ -126,6 +138,79 @@ def run(argv: Sequence[str], *, timeout: float = 120.0, stdin: str | None = None
                       time.monotonic() - started, launched=True, timed_out=True)
     return Result(argv, p.returncode, p.stdout or "", p.stderr or "",
                   time.monotonic() - started)
+
+
+def _run_streaming(argv: tuple[str, ...], *, timeout: float, stdin: str | None,
+                   env: dict[str, str] | None, cwd: str | None,
+                   merge_stderr: bool, started: float) -> Result:
+    """`run(stream=True)`: tee stdout/stderr live, and still capture both.
+
+    Two reader threads rather than one merged pipe, because merging would put the
+    callee's progress (stderr) into our stdout and so into any pipe the caller set
+    up. Threads are the only way to drain two pipes without deadlocking when one
+    fills while we block on the other — and the deadlock is not hypothetical: a
+    pod that writes 80 KB of audit rows to stdout fills the 64 KB pipe buffer and
+    stops, forever, if we are reading stderr line by line at the time.
+    """
+    import threading
+    bufs: dict[str, list[str]] = {"out": [], "err": []}
+
+    def pump(src, sink, key: str) -> None:
+        try:
+            for line in iter(src.readline, ""):
+                bufs[key].append(line)
+                sink.write(line)
+                sink.flush()
+        finally:
+            src.close()
+
+    try:
+        p = subprocess.Popen(
+            argv, stdin=subprocess.PIPE if stdin is not None else None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT if merge_stderr else subprocess.PIPE,
+            text=True, bufsize=1,
+            env={**os.environ, **env} if env else None, cwd=cwd)
+    except FileNotFoundError as e:
+        return Result(argv, 127, "", f"{argv[0]}: not found on PATH ({e})",
+                      time.monotonic() - started, launched=False)
+    except PermissionError as e:
+        return Result(argv, 126, "", f"{argv[0]}: not executable ({e})",
+                      time.monotonic() - started, launched=False)
+
+    threads = [threading.Thread(target=pump, args=(p.stdout, sys.stdout, "out"),
+                                daemon=True)]
+    if p.stderr is not None:
+        threads.append(threading.Thread(target=pump,
+                                        args=(p.stderr, sys.stderr, "err"),
+                                        daemon=True))
+    for t in threads:
+        t.start()
+    if stdin is not None and p.stdin is not None:
+        try:
+            p.stdin.write(stdin)
+        except BrokenPipeError:
+            pass
+        p.stdin.close()
+
+    timed_out = False
+    try:
+        p.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        p.kill()
+        p.wait()
+    # Join AFTER the process is reaped, so output written just before exit is not
+    # lost from the captured copy — a Result that is missing the last line a caller
+    # greps for is the silent-failure shape this module exists to prevent.
+    for t in threads:
+        t.join(timeout=5)
+    out = "".join(bufs["out"])
+    err = "".join(bufs["err"])
+    if timed_out:
+        return Result(argv, 124, out, err or f"timed out after {timeout}s",
+                      time.monotonic() - started, launched=True, timed_out=True)
+    return Result(argv, p.returncode, out, err, time.monotonic() - started)
 
 
 def _text(v: Any) -> str:

@@ -57,6 +57,10 @@ class Row:
     verdict: str
     reason: str
     causationid: str
+    # ADR-0003. Signed, so a label read off the topic is as trustworthy as the
+    # `submitter` beside it — which is what lets the audit filter on it directly
+    # instead of asking EventBridge's store to resolve the label first.
+    label: str = ""
 
     @property
     def is_terminal(self) -> bool:
@@ -166,6 +170,7 @@ def row_for(event, offset: int, ks, *, bridge_kid: str | None = None) -> Row:
         verdict=verdict,
         reason=reason,
         causationid=event.get(ce.EXT_CAUSATIONID) or "",
+        label=event.get(ce.EXT_LABEL) or "",
     )
 
 

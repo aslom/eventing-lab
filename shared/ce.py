@@ -80,6 +80,19 @@ EXT_AGENT = "agent"
 EXT_DEPTH = "depth"
 # Phase 3 §7.2 — the trigger that caused this request, for attribution on the response.
 EXT_TRIGGERID = "triggerid"
+# ADR-0003 — an operator's tag for one run, so `audit_topic.py` can filter and highlight
+# a labelled run directly from the topic instead of resolving the label to a
+# correlationid against EventBridge's store first.
+#
+# It is in `signing.SIGNED_ATTRS`, and that is the whole reason it is allowed on the
+# wire at all. ADR-0001 kept it store-only because an UNSIGNED label would be mutable in
+# flight, and `kafka_requests_mirror` rebuilds session rows from topic data with the
+# target store chosen by `ce_userkey` — which spec 0003 §8.2 records as forger-
+# controlled (eventing-lab#5). A forgeable label would therefore be a cross-tenant
+# injection path into the very lookup it serves. Signed, it is as trustworthy as
+# `submitter` or `groupid`; unsigned, it would be worse than absent. ADR-0003 supersedes
+# ADR-0001 on that basis.
+EXT_LABEL = "label"
 
 CE_HEADER_PREFIX = "ce_"
 CORE_ATTRS = {"specversion", "type", "source", "id", "time",

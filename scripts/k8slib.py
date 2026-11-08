@@ -106,9 +106,17 @@ class Kubectl:
         return out + [str(a) for a in args]
 
     def call(self, args: Sequence[str], *, namespace: str | None | bool = None,
-             stdin: str | None = None, timeout: float | None = None) -> Result:
+             stdin: str | None = None, timeout: float | None = None,
+             stream: bool = False) -> Result:
+        """Run a kubectl subcommand. `stream=True` tees output live as it arrives.
+
+        Streaming matters for the few calls that take tens of seconds — `kubectl run`
+        of an audit pod, a build, a rollout wait. Captured output is identical either
+        way, so only the liveness differs and no caller needs to change to keep
+        working.
+        """
         return run(self.argv(args, namespace=namespace),
-                   timeout=timeout or self.timeout, stdin=stdin)
+                   timeout=timeout or self.timeout, stdin=stdin, stream=stream)
 
     def json_call(self, args: Sequence[str], *, namespace: str | None | bool = None,
                   timeout: float | None = None) -> Any:

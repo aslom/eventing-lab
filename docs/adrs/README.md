@@ -12,7 +12,9 @@ system rests on.
 
 | #                                    | Decision              | Status   |
 | ------------------------------------ | --------------------- | -------- |
-| `0001-<kebab-title>.md`              | <The decision, as a claim — "Persist session state through a pluggable backend"> | Proposed |
+| [`0001-agent-labels-are-store-only.md`](0001-agent-labels-are-store-only.md) | An agent label is store-only metadata, never a CloudEvent attribute | Superseded by [0003](0003-agent-labels-are-signed-event-attributes.md) |
+| [`0002-native-ed25519-with-pure-python-fallback.md`](0002-native-ed25519-with-pure-python-fallback.md) | Verify Ed25519 through libcrypto when it loads, falling back to pure Python | Accepted |
+| [`0003-agent-labels-are-signed-event-attributes.md`](0003-agent-labels-are-signed-event-attributes.md) | An agent label is a signed CloudEvent attribute | Accepted |
 
 <!-- One row per ADR, in number order. Numbers are permanent and never reused. -->
 

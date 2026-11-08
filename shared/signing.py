@@ -36,7 +36,7 @@ import pathlib
 import sys
 from typing import Any
 
-from shared import ce
+from shared import ce, ed25519_native
 
 # ---- Ed25519 (RFC 8032), pure Python ---------------------------------------
 
@@ -160,7 +160,27 @@ def sign(message: bytes, seed: bytes) -> bytes:
 
 
 def verify(message: bytes, signature: bytes, pub: bytes) -> bool:
-    """Constant-time-ish Ed25519 verification. False rather than raising."""
+    """Ed25519 verification. False rather than raising.
+
+    Tries libcrypto first (`ed25519_native`), then falls back to the pure-Python
+    implementation below. Same answer either way — `tests/test_ed25519_native.py`
+    asserts the two agree on valid, tampered, wrong-key and malformed input, because a
+    fast path that silently disagrees with the reference is worse than no fast path.
+
+    **Why the fast path exists.** The pure implementation costs 183-201 ms per
+    verification on the x86 nodes this deploys to. That is invisible when signing one
+    terminal event per turn, and it dominated the one job that verifies in bulk:
+    `scripts/audit_topic.py` spent 93.2 s of 98.8 s here on a real 4410-event topic.
+    libcrypto does the same work in ~0.12 ms, so that step becomes 0.06 s.
+
+    The fallback is not theoretical. `cryptography` and `pynacl` are absent from both
+    this venv and the runner image by design (§1.1, stdlib only), and macOS refuses to
+    let a third party load its `/usr/lib/libcrypto.dylib` at all — so on a laptop
+    without Homebrew's OpenSSL the pure path is what runs, unchanged.
+    """
+    _native = ed25519_native.load()
+    if _native is not None:
+        return _native(message, signature, pub)
     try:
         if len(signature) != 64 or len(pub) != 32:
             return False
@@ -217,7 +237,21 @@ SIGNED_ATTRS = ("specversion", "type", "source", "id", "time", "subject",
                 # configuration worse than the unsigned one, because an operator believes
                 # it is attested. Added in the same change as the other two, per §8.3's
                 # one-canonicalisation-break rule.
-                "userkey", "depth", "agent")
+                "userkey", "depth", "agent",
+                # ADR-0003. An operator's run tag, so the audit can filter a labelled run
+                # straight off the topic. It is HERE, not merely on the event, for the
+                # same reason `userkey` is: `kafka_requests_mirror` rebuilds session rows
+                # from topic data, so a mutable label would let anything with topic write
+                # access point a label lookup at its own correlationid — a guessable
+                # string resolving to a capability someone else can steer. Unsigned it
+                # would be worse than absent, which is why ADR-0001 kept it off the wire
+                # entirely until it could be added here.
+                #
+                # Its own canonicalisation break, deliberately: this lands in one change
+                # with nothing else, per §8.3's rule, and a deployment with signing
+                # enabled must upgrade EventBridge and EventRunner TOGETHER. With signing
+                # off (the default) there is nothing to coordinate.
+                "label")
 
 
 def data_bytes(data: Any) -> bytes:
@@ -477,8 +511,11 @@ def response_decision(event, ks, *, require: bool,
 
     **Unsigned non-terminal frames are accepted, and that is not a loophole being
     left open — it is the signing policy on the other side.** `emit()` signs terminal
-    events only, because it runs for every `stdout` frame and a signature costs
-    ~190-230 ms (measured: 222 ms sign / 227 ms verify, IMPLEMENTATION_REPORT1 §9);
+    events only, because it runs for every `stdout` frame and SIGNING costs ~222 ms
+    (measured, IMPLEMENTATION_REPORT1 §9). Note the policy rests on the cost of
+    signing, which is still pure Python; verification is now ~0.14 ms via libcrypto
+    (ADR-0002), so the asymmetry is wider than when this was written — but it is the
+    producer side that decides what gets signed, so the reasoning is unchanged;
     verifying all-or-nothing would rewrite every streamed frame of every
     genuine run to `phase=error`. So an event that carries no signature AND is not
     terminal is passed through, while an unsigned **terminal** event is still refused —

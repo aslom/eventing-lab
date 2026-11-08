@@ -19,6 +19,12 @@ before it** — read them in order; only Phase 0 is self-contained.
 | Phase 2 | Identity on the event path                       | [`0003-phase2-identity-on-the-event-path.md`](0003-phase2-identity-on-the-event-path.md)   | Implemented — partial        | [`phase2-cluster-run-report.md`](../reports/phase2-cluster-run-report.md) |
 | Phase 3 | Per-user isolation, declarative agents, triggers | [`0004-phase3-tenancy-agents-triggers.md`](0004-phase3-tenancy-agents-triggers.md)         | Accepted — partly implemented | [`phase3-report.md`](../reports/phase3-report.md)                         |
 | Phase 4 | Enrollment, and asking a human for permission    | [`0005-phase4-enrollment-and-permission.md`](0005-phase4-enrollment-and-permission.md)     | Proposed — design only        | —                                                                         |
+| Demo 3P | The three-part ykt1 demo (presentation only)      | [`2026-11-05-three-part-demo-design.md`](2026-11-05-three-part-demo-design.md)             | Accepted — partly implemented | —                                                                         |
+
+**Demo 3P is not a phase** and adds no capability — it is the presentation layer over Phases 1
+and 2, kept here because it is a design with rejected alternatives rather than a runbook. The
+runbook it produces is `demo.txt` in the demo working directory; the walkthroughs in
+[`../demos/`](../demos/) are the in-repo equivalents.
 
 Two things the status column is deliberately blunt about:
 

@@ -12,8 +12,9 @@ being performed live in front of an audience.
 | [`phase1-demo.md`](phase1-demo.md)                             | The same path on Kubernetes, scaling from zero agent replicas on consumer lag    |
 | [`kubecon-na-2026-demo.md`](kubecon-na-2026-demo.md)           | The conference run-of-show on the signed path, every act marked doable or not    |
 | [`kubecon-na-2026-screenplay.md`](kubecon-na-2026-screenplay.md) | The six commands actually recorded for the talk, and the order to cut them in  |
+| [`ykt1-three-part-demo.md`](ykt1-three-part-demo.md)           | The OpenShift run-of-show as three questions: works / provable / holds           |
 
-All four are runbooks you read while typing, which is why they live here rather than in
+All five are runbooks you read while typing, which is why they live here rather than in
 [`../notes/`](../notes/). `phase1-demo.md` covers all four ways to run it — locally without
 containers, under Docker, on Kind, and on OpenShift — `phase0-demo.md` is still the more
 detailed account of the laptop path, and `kubecon-na-2026-demo.md` is the signed path on Kind

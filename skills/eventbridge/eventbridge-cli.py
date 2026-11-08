@@ -254,14 +254,67 @@ def _style_from(args) -> str:
 
 
 def cmd_run(args):
-    r = _req("POST", "/v0/agents",
-             {"prompt": args.prompt, "max_turns": args.max_turns})
+    body = {"prompt": args.prompt, "max_turns": args.max_turns}
+    if getattr(args, "label", None):
+        body["label"] = args.label
+    r = _req("POST", "/v0/agents", body)
     corr = r["correlationid"]
     # No parentheses around the URL — many terminals auto-linkify the URL
     # AND the trailing ')' as one token, which 404s when clicked.
-    print(f"▸ agent {corr} · {BASE}/v0/agents/{corr}")
+    print(f"▸ agent {corr} · {BASE}/v0/agents/{corr}"
+          + (f" · label {r['label']}" if r.get("label") else ""))
     if args.watch:
         _watch(corr, args.timeout, style=_style_from(args))
+
+
+def cmd_latest(args):
+    """Print the correlationid of the most recent run with this label, and nothing else.
+
+    Built for `CORR=$(… latest incident)`, which is the copy-paste step this removes from
+    the middle of a demo. So stdout carries exactly one token and everything else — the
+    command echo, the endpoint line, the label confirmation — goes to stderr, where the
+    operator still sees it on screen.
+
+    A miss exits non-zero with nothing on stdout. `CORR=""` that looks like success is
+    the failure mode worth avoiding: the next command would then audit nothing and the
+    reason would be three steps back.
+    """
+    try:
+        r = _req("GET", "/v0/agents?label=" + urllib.parse.quote(args.label))
+    except urllib.error.HTTPError as e:
+        # `_req` handles 401/403 itself. A 404 here has TWO causes that need different
+        # advice, and conflating them sent an operator chasing the wrong one: the label
+        # really is unknown, OR this EventBridge has no label route at all because it
+        # predates the feature. The second case had `run --label` silently accepted (an
+        # older bridge ignores an unknown body field) and then `latest` saying "no agent
+        # labelled 'incident'" about a run that had just been made.
+        #
+        # They are told apart by the BODY, not the status: the handler answers JSON
+        # (`{"error": "no agent with label …"}`), while an unmatched route falls through
+        # to the dispatcher's plain-text `not found`.
+        if e.code == 404:
+            try:
+                body = e.read().decode("utf-8", "replace")
+            except Exception:  # noqa: BLE001
+                body = ""
+            if "error" not in body:
+                print(f"✖ this EventBridge has no label lookup: GET /v0/agents "
+                      f"answered 404 {body.strip()[:40]!r}, not JSON.", file=sys.stderr)
+                print("  The deployment predates `--label`. Rebuild and redeploy "
+                      "eventbridge, or read the correlationid off the run output and "
+                      "set it by hand.", file=sys.stderr)
+                print(f"  Check with:  curl -sS {BASE}/v0/agents", file=sys.stderr)
+                print("  A label-aware bridge answers 400 'label required' there.",
+                      file=sys.stderr)
+                raise SystemExit(2) from None
+            print(f"✖ no agent labelled {args.label!r}", file=sys.stderr)
+            print(f"  start one with:  run '<prompt>' --label {args.label}",
+                  file=sys.stderr)
+            raise SystemExit(1) from None
+        raise
+    print(r["correlationid"])
+    print(f"· label {r['label']} · {BASE}/v0/agents/{r['correlationid']}"
+          f" · {r.get('turns', 0)} turn(s)", file=sys.stderr)
 
 
 def cmd_runmany(args):
@@ -605,7 +658,7 @@ def _add_style_flags(sub):
 ECHO_ENV = "EVENTBRIDGE_ECHO"
 
 
-def _echo_command(argv=None) -> None:
+def _echo_command(argv=None, *, stream=None) -> None:
     """Print the exact command being run, in copy-pasteable form.
 
     An agent driving this CLI describes what it is about to do in prose, and prose is
@@ -622,7 +675,8 @@ def _echo_command(argv=None) -> None:
     # could carry userinfo — echoing it would put it in the transcript verbatim.
     rest = [_redact_userinfo(a) for a in rest]
     parts = ["python3", script, *rest]
-    print("$ " + " ".join(shlex.quote(x) for x in parts))
+    print("$ " + " ".join(shlex.quote(x) for x in parts),
+          file=stream if stream is not None else sys.stdout)
 
 
 def _redact_userinfo(arg: str) -> str:
@@ -655,6 +709,9 @@ def main():
 
     r = sub.add_parser("run", help="start an agent with a prompt and print its reply")
     r.add_argument("prompt")
+    r.add_argument("--label", default=None, metavar="NAME",
+                   help="tag this run so `latest NAME` can resolve its correlationid "
+                        "later, instead of copying the id by hand")
     r.add_argument("--max-turns", type=int, default=3)
     r.add_argument("--watch", action=argparse.BooleanOptionalAction, default=True,
                    help="stream the reply inline (default). --no-watch returns immediately.")
@@ -734,6 +791,13 @@ def main():
     _add_target_flags(gl)
     gl.set_defaults(fn=cmd_group_list)
 
+    lt = sub.add_parser("latest",
+                        help="print the correlationid of the most recent run with a "
+                             "label, for CORR=$(... latest NAME)")
+    lt.add_argument("label")
+    _add_target_flags(lt)
+    lt.set_defaults(fn=cmd_latest)
+
     st = sub.add_parser("selftest", help="diagnose which EVENT_BRIDGE_PUBLIC_BASE_URL a phone could reach")
     st.add_argument("--url", action="append", default=[],
                     help="extra URL to probe (repeatable); useful for verifying a fresh ngrok/cloudflared URL")
@@ -749,10 +813,21 @@ def main():
     if getattr(args, "base_url", None):
         BASE = _normalize_base(args.base_url)
         BASE_SOURCE = "--base-url"
-    _echo_command()
+    # Both preamble lines go to STDERR for commands whose stdout is captured in a shell
+    # substitution, and to stdout for everything else. `latest` exists to be used as
+    # `CORR=$(... latest NAME)`, and the echo plus the endpoint line would otherwise land
+    # inside `$( )` and make `$CORR` three lines of prose.
+    #
+    # Redirected rather than suppressed, deliberately: the docstrings on
+    # `_echo_command` and the endpoint line below both argue that ALWAYS printing them is
+    # what stopped a run quietly going to localhost and looking like "the agent never
+    # replied". On stderr they stay on the operator's screen and in a transcript, which
+    # is where they were needed, without being captured.
+    preamble = sys.stderr if getattr(args, "op", None) == "latest" else sys.stdout
+    _echo_command(stream=preamble)
     # Always, including the default. Printing only the interesting case is what let a
     # run quietly go to localhost and look like "the agent never replied".
-    print(f"· endpoint {BASE} (from {BASE_SOURCE})")
+    print(f"· endpoint {BASE} (from {BASE_SOURCE})", file=preamble)
     args.fn(args)
 
 

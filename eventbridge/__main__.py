@@ -233,6 +233,10 @@ def main() -> int:
                  owners=owners if topics.multi else None)
     dsp = Dispatcher()
     dsp.add("POST", r"/v0/agents",                                          h.start_agent)
+    # Label -> latest correlationid. Cannot shadow the per-correlation GET below:
+    # `Dispatcher` anchors every pattern `^…$`, and a query string is not part of
+    # PATH_INFO, so `/v0/agents?label=x` matches this and only this.
+    dsp.add("GET",  r"/v0/agents",                                          h.find_agent)
     dsp.add("POST", r"/v0/agents/(?P<correlationid>[a-z0-9-]+)/continue",   h.continue_agent)
     dsp.add("POST", r"/v0/agents/(?P<correlationid>[a-z0-9-]+)/continue-html", h.continue_agent_html)
     dsp.add("GET",  r"/v0/agents/(?P<correlationid>[a-z0-9-]+)",            h.get_html)

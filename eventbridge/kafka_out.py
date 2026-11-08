@@ -63,12 +63,18 @@ class Producer:
         submitter_iss: str | None = None,
         userkey: str | None = None,
         agent: str | None = None,
+        label: str | None = None,
     ) -> str:
         """Publish one request. `userkey` selects the topic in multi-tenant mode.
 
         §2.6: `userkey` also rides on the event, because EventRunner stamps it back onto
         the response and that is what tells EventBridge which store to file the response
         in. It is in `signing.SIGNED_ATTRS` (T4) so it cannot be rewritten in flight.
+
+        ADR-0003: `label` rides on it too, so `audit_topic.py` can filter a labelled run
+        straight off the topic rather than resolving the label against this service's
+        store first. Also in `SIGNED_ATTRS`, for the same reason as `userkey` — a
+        mutable label would let anything with topic write access steer a label lookup.
         """
         topic = self._topics.requests(userkey)
         event = ce.new_event(
@@ -85,6 +91,7 @@ class Producer:
             **({ce.EXT_SUBMITTER_ISS: submitter_iss} if submitter_iss else {}),
             **({ce.EXT_USERKEY: userkey} if userkey else {}),
             **({ce.EXT_AGENT: agent} if agent else {}),
+            **({ce.EXT_LABEL: label} if label else {}),
         )
         # After new_event (which fills `id` and `time`, both signed) and before
         # serialisation, so the signature covers exactly what goes on the wire.

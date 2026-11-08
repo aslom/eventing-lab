@@ -38,7 +38,20 @@ CREATE TABLE IF NOT EXISTS sessions (
   first_prompt  TEXT,
   created_utc   TEXT NOT NULL,
   updated_utc   TEXT NOT NULL,
-  turns         INTEGER NOT NULL DEFAULT 0
+  turns         INTEGER NOT NULL DEFAULT 0,
+  -- An operator's tag for ONE run, so a demo or a script can ask for "the latest
+  -- `incident` run" instead of pasting a correlationid. Store-only and deliberately
+  -- NOT a CloudEvent attribute: adding one to `signing.SIGNED_ATTRS` changes
+  -- canonicalisation for every signature, and nothing downstream reads a label
+  -- (`publish_request` does not take one). Putting it on the event but OUTSIDE
+  -- SIGNED_ATTRS would be worse still — `kafka_requests_mirror` writes session rows
+  -- from topic data, so a mutable label would be a cross-tenant injection path into
+  -- the very lookup this exists to serve.
+  --
+  -- NULL, never '', when absent: an empty-string label would otherwise match every
+  -- unlabelled run. No index here on purpose — see __init__, where it is created
+  -- AFTER the ALTER block.
+  label         TEXT
 );
 CREATE TABLE IF NOT EXISTS prompts (
   correlationid TEXT NOT NULL,
@@ -132,6 +145,18 @@ class Store:
                 "ALTER TABLE group_members ADD COLUMN verified INTEGER NOT NULL DEFAULT 0")
         except sqlite3.OperationalError:
             pass
+        try:
+            self._s.execute("ALTER TABLE sessions ADD COLUMN label TEXT")
+        except sqlite3.OperationalError:
+            pass
+        # AFTER the ALTERs, and not inside `_SCHEMA_SESSIONS`, which is the whole point:
+        # `executescript` above runs before this block, so on a database created before
+        # `label` existed a `CREATE INDEX … ON sessions(label)` in the schema script
+        # raises `no such column: label` — uncaught, so `Store()` raises and EventBridge
+        # crashloops before it binds a socket. `IF NOT EXISTS` does not help: the table
+        # exists, the column does not.
+        self._s.execute(
+            "CREATE INDEX IF NOT EXISTS sessions_by_label ON sessions(label)")
         self._lock = threading.Lock()
         self._sub_lock = threading.Lock()
         self._subscribers: dict[str, list[threading.Event]] = {}
@@ -222,14 +247,31 @@ class Store:
         return bool(row and row[0])
 
     # ---- sessions ----
-    def upsert_session(self, correlationid: str, sessionuuid: str, workdir: str, first_prompt: str | None) -> None:
+    def upsert_session(self, correlationid: str, sessionuuid: str, workdir: str,
+                       first_prompt: str | None, *, label: str | None = None) -> None:
+        """Create the session row, or count another turn on it.
+
+        `label` is KEYWORD-ONLY. Five call sites pass four positionals
+        (`handlers.start_agent`, `handlers.continue_agent` twice, `group_service`), plus
+        ~20 in tests; `correlation.Minter.mint(*, userkey=…)` documents the same reason —
+        a positional signature change breaks substitutes at the call site.
+
+        It is written ONLY on the INSERT branch, and that is load-bearing rather than
+        incidental: `/continue` calls this with `first_prompt=None` and no label, so a
+        label in the UPDATE's SET list would wipe the tag on every resume. Keeping it out
+        of that statement means no caller can reach it by accident.
+        """
         now = _now_iso()
         with self._lock:
             row = self._s.execute("SELECT correlationid, turns FROM sessions WHERE correlationid=?", (correlationid,)).fetchone()
             if row is None:
                 self._s.execute(
-                    "INSERT INTO sessions(correlationid,sessionuuid,workdir,first_prompt,created_utc,updated_utc,turns) VALUES (?,?,?,?,?,?,0)",
-                    (correlationid, sessionuuid, workdir, first_prompt or "", now, now),
+                    "INSERT INTO sessions(correlationid,sessionuuid,workdir,first_prompt,created_utc,updated_utc,turns,label) VALUES (?,?,?,?,?,?,0,?)",
+                    # `label` unchanged rather than `label or ""`: NULL is the truthful
+                    # "no label", and '' would make a lookup for an empty label match
+                    # every unlabelled run.
+                    (correlationid, sessionuuid, workdir, first_prompt or "", now, now,
+                     label),
                 )
             else:
                 self._s.execute(
@@ -290,12 +332,12 @@ class Store:
 
     def get_session(self, correlationid: str) -> dict[str, Any] | None:
         row = self._s.execute(
-            "SELECT correlationid, sessionuuid, workdir, first_prompt, created_utc, updated_utc, turns FROM sessions WHERE correlationid=?",
+            "SELECT correlationid, sessionuuid, workdir, first_prompt, created_utc, updated_utc, turns, label FROM sessions WHERE correlationid=?",
             (correlationid,),
         ).fetchone()
         if not row:
             return None
-        keys = ("correlationid", "sessionuuid", "workdir", "first_prompt", "created_utc", "updated_utc", "turns")
+        keys = ("correlationid", "sessionuuid", "workdir", "first_prompt", "created_utc", "updated_utc", "turns", "label")
         return dict(zip(keys, row))
 
     def all_correlations(self, limit: int = 100) -> list[str]:
@@ -303,6 +345,35 @@ class Store:
             "SELECT correlationid FROM sessions ORDER BY updated_utc DESC LIMIT ?", (limit,)
         ).fetchall()
         return [r[0] for r in rows]
+
+    def latest_for_label(self, label: str) -> dict[str, Any] | None:
+        """The most recently STARTED run carrying this label, or None.
+
+        Latest wins silently. A label is operator bookkeeping, not a unique key, so
+        re-rehearsing a demo beat with the same tag must not need a cleanup step between
+        takes. Same contract as `--group latest` (`scripts/watch_topics.latest_group`),
+        for a single agent.
+
+        Ordered on `created_utc`, NOT `updated_utc`, and the difference is observable:
+        `upsert_session`'s UPDATE bumps `updated_utc` on every `/continue`, so a resumed
+        older run would outrank a newer one and "latest" would stop meaning "the run I
+        just started". `all_groups` — the query behind `--group latest` — orders by
+        `created_utc DESC` for the same reason.
+
+        `rowid` breaks ties: `_now_iso` is millisecond precision, so two runs submitted
+        inside one millisecond would otherwise come back in arbitrary order. It is a free
+        total order here because `sessions` has a TEXT primary key and is therefore not
+        `WITHOUT ROWID`. `owner_index`'s schema comment records this same tie-break bug.
+        """
+        row = self._s.execute(
+            "SELECT correlationid, label, created_utc, updated_utc, turns "
+            "FROM sessions WHERE label=? ORDER BY created_utc DESC, rowid DESC LIMIT 1",
+            (label,),
+        ).fetchone()
+        if not row:
+            return None
+        keys = ("correlationid", "label", "created_utc", "updated_utc", "turns")
+        return dict(zip(keys, row))
 
     # ---- groups (§21) ----
     def create_group(self, groupid: str, *, label: str | None, expected: int | None,

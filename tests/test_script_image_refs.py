@@ -182,12 +182,113 @@ def test_audit_topic_does_not_import_host_only_modules_at_module_level():
                 f"audit_in_cluster() instead")
 
 
+def _shipped_into_the_pod() -> dict[str, str]:
+    """The files `audit_in_cluster` writes into the pod, decoded from its own argv.
+
+    Built by calling the real code path rather than by re-deriving the list here: a
+    test that keeps its own copy of what SHOULD be shipped passes when both copies
+    drift together, which is precisely the bug class this file exists for.
+    """
+    import base64
+    import json
+    import zlib
+
+    import audit_topic
+
+    class _FakeRes:
+        ok, out, err = True, "", ""
+
+    captured: dict[str, object] = {}
+
+    class _FakeK:
+        def get(self, *a, **kw):
+            # EB_VERIFY_KEYSET_PATH is read with a bare dig(), which RAISES for an
+            # absent path by design (k8slib's whole premise), so the fake ConfigMap
+            # must carry it. Empty string = "no keyset", the listing-only branch.
+            return {"data": {"KAFKA_BOOTSTRAP": "b:9092",
+                             "REQUEST_TOPIC": "t-req",
+                             "RESPONSE_TOPIC": "t-res",
+                             "EB_VERIFY_KEYSET_PATH": ""}}
+
+        def call(self, args, **kw):
+            captured["argv"] = args
+            return _FakeRes()
+
+    class _Args:
+        context = kubeconfig = None
+        namespace = "kev1"
+        bootstrap = "b:9092"
+        request_topic, response_topic = "t-req", "t-res"
+        bridge_kid = ""
+        chains = verify = json_ = no_color = False
+        corr = highlight = label = highlight_label = None
+        limit, pod_timeout = 2000, 240.0
+        registry, tag = DEFAULT_REGISTRY, DEFAULT_TAG
+
+    # `json` shadows the stdlib name inside the class body, so it is set after.
+    _Args.json = False
+    import k8slib
+    import proclib
+    orig_kubectl = k8slib.Kubectl
+    k8slib.Kubectl = lambda **kw: _FakeK()
+    try:
+        audit_topic.audit_in_cluster(_Args(), proclib.Checks(prefix="t"))
+    finally:
+        k8slib.Kubectl = orig_kubectl
+
+    argv = captured["argv"]
+    prog = next(a for a in argv if "zlib.decompress" in str(a))
+    blob = prog.split("base64.b64decode('")[1].split("')")[0]
+    return json.loads(zlib.decompress(base64.b64decode(blob)))
+
+
 def test_audit_topic_ships_proclib_into_the_pod():
     """`proclib` IS needed in the pod (audit_locally uses Checks/die), so it must
-    be written alongside the script rather than imported from scripts/."""
+    travel with the script rather than be imported from scripts/."""
+    assert "proclib.py" in _shipped_into_the_pod()
+
+
+def test_audit_topic_ships_its_own_shared_package_into_the_pod():
+    """`shared/` travels too, and this is the regression that forced it.
+
+    The pod used to import `shared` from `/app` — the eventrunner image. A current
+    `audit_topic.py` therefore met whatever `shared/` that image was built with, and
+    `--label` died in the cluster on:
+
+        AttributeError: 'Row' object has no attribute 'label'
+
+    `audit.Row.label` is ADR-0003; the deployed image predated it. `imagePullPolicy:
+    Always` cannot fix this — the image is current in the registry and stale in its
+    content — and pinning an audit to the image lifecycle of the thing it audits is
+    the wrong coupling regardless.
+
+    So every module the audit imports is shipped: `shared.audit` needs `ce` and
+    `signing`, `signing` needs `ed25519_native` and `ce`, and `audit_locally` loads
+    `keyset` directly. A missing one is a pod-only ModuleNotFoundError.
+    """
+    shipped = _shipped_into_the_pod()
+    for mod in ("__init__", "ce", "keyset", "signing", "ed25519_native", "audit"):
+        assert f"shared/{mod}.py" in shipped, (
+            f"shared/{mod}.py must be shipped into the pod, not imported from /app")
+    assert "label" in shipped["shared/audit.py"], (
+        "the shipped shared/audit.py is not the one with Row.label — the host copy "
+        "should travel verbatim")
+
+
+def test_the_shipped_shared_shadows_the_images_copy():
+    """The shipped dir must come BEFORE /app on sys.path, or the image wins anyway.
+
+    Shipping the right source and then letting `/app/shared` resolve first would
+    reproduce the exact failure above while looking fixed.
+    """
+    import audit_topic
     src = (SCRIPTS / "audit_topic.py").read_text()
-    assert "proclib.py" in src and "/tmp/proclib.py" in src, (
-        "audit_in_cluster must ship proclib.py into the pod")
+    del audit_topic
+    i_app = src.index("sys.path.insert(0,'/app')")
+    i_ship = src.index("sys.path.insert(0,str(d))")
+    assert i_app < i_ship, (
+        "/app must be inserted BEFORE the shipped dir, so that the shipped dir ends "
+        "up at sys.path[0] and shadows the image's shared/")
 
 
 def test_audit_topic_keeps_the_real_registry_defaults_on_the_host():
@@ -197,3 +298,67 @@ def test_audit_topic_keeps_the_real_registry_defaults_on_the_host():
     args = audit_topic.build_args([])
     assert args.registry == DEFAULT_REGISTRY
     assert args.tag == DEFAULT_TAG
+
+
+# ---- the shell helpers ------------------------------------------------------
+#
+# `inject-unsigned.sh` and `watch-refusals.sh` were developed OUTSIDE the repo and
+# ran only by hand, so they had neither a syntax gate nor the image-ref check that
+# this file applies to every .py in scripts/. The injector in particular had a
+# hardcoded `--image` that was wrong in two ways at once: it pinned one cluster's
+# internal registry, and it named `rossoctl-eventrunner` while the deployment runs
+# `rossoctl-eventrunner-claude`, so the pod meant to produce a byte-identical
+# forgery was built from a different image than the runner it impersonates.
+
+def _shell_scripts() -> list[pathlib.Path]:
+    return sorted(SCRIPTS.glob("*.sh"))
+
+
+def test_every_shell_script_parses():
+    """`bash -n` on each. These are performed live; a typo is found on stage."""
+    import subprocess
+    for path in _shell_scripts():
+        r = subprocess.run(["bash", "-n", str(path)], capture_output=True, text=True)
+        assert r.returncode == 0, f"{path.name} is not valid bash:\n{r.stderr}"
+
+
+def test_shell_scripts_carry_no_absolute_home_paths():
+    """A path under /Users or /home is one operator's machine, unusable by anyone
+    else and silently wrong after a move. `demo-commands.sh` carried seven."""
+    bad = []
+    for path in _shell_scripts():
+        for n, line in enumerate(path.read_text().splitlines(), 1):
+            code = line.split("#", 1)[0]
+            if "/Users/" in code or "/home/" in code:
+                bad.append(f"{path.name}:{n}: {line.strip()}")
+    assert not bad, ("absolute home paths in a committed script:\n  "
+                     + "\n  ".join(bad))
+
+
+def test_the_injector_does_not_hardcode_an_image_reference():
+    """The forgery must be built from the image the runner is ACTUALLY running,
+    read from the Deployment — otherwise 'byte-identical in shape to a genuine
+    wake' is false, because the two sides have different `shared.ce`."""
+    src = (SCRIPTS / "inject-unsigned.sh").read_text()
+    assert "jsonpath='{.spec.template.spec.containers[0].image}'" in src, (
+        "inject-unsigned.sh must read the image from deploy/eventrunner")
+    for line in src.splitlines():
+        code = line.split("#", 1)[0]
+        if code.strip().startswith("IMAGE="):
+            assert "rossoctl-eventrunner" not in code, (
+                f"hardcoded image ref: {code.strip()!r} — read it from the cluster")
+
+
+def test_the_injector_refuses_to_run_when_enforcement_is_off():
+    """Without ER_REQUIRE_SIGNATURE=true the forgery is ACCEPTED and the agent runs,
+    so the beat would narrate a control that is switched off. It must abort."""
+    src = (SCRIPTS / "inject-unsigned.sh").read_text()
+    assert "ER_REQUIRE_SIGNATURE" in src
+    assert "exit 1" in src, "the injector must exit non-zero when not enforcing"
+
+
+def test_the_injector_asserts_the_event_is_actually_unsigned():
+    """A bug that accidentally signed it would make the beat narrate a refusal that
+    never happened. The absence is the whole point, so it is asserted."""
+    src = (SCRIPTS / "inject-unsigned.sh").read_text()
+    assert 'assert "signature" not in req.attrs' in src

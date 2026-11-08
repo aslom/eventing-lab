@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import pathlib
+import re
 import time
 import urllib.parse
 from typing import Any
@@ -89,6 +90,22 @@ def _read_form(environ) -> dict:
 # A group id is minted by the same generator as a correlationid, so it has the same
 # shape; the two live in separate URL namespaces (/v0/agents vs /v0/groups).
 GROUP_REGEX = CORR_REGEX
+
+# An agent label is CHOSEN by an operator rather than minted, so it cannot borrow
+# CORR_REGEX's shape. It is validated rather than passed through — which is what
+# `create_group` does with its own label — because this one is typed back as a URL QUERY
+# PARAMETER (`?label=<it>`) and captured in a shell substitution
+# (`CORR=$(… latest <it>)`). A value needing percent-encoding or quoting turns a one-line
+# demo command into a puzzle, which defeats the point of having it.
+#
+# This is NOT a defence against SQL injection: every query here is parameterised, and a
+# regex standing in for that would be the wrong defence in the wrong place.
+#
+# The character set is exactly what is safe unencoded in a URL and unquoted in a shell.
+# The first character must be alphanumeric so a label cannot start with '-' and be eaten
+# as a CLI flag. 64 is generous for a human tag and bounds what reaches the HTML view
+# (which escapes regardless).
+LABEL_REGEX = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
 class _BadRequest(Exception):
@@ -254,6 +271,17 @@ class Handlers:
         if groupid and not GROUP_REGEX.match(str(groupid)):
             return _json(start_response, "400 Bad Request", {"error": "bad groupid"})
 
+        # An operator's tag for this run, so `GET /v0/agents?label=` can resolve it later
+        # without anyone copying a correlationid. Refused here rather than normalised:
+        # silently lower-casing or trimming would mean `latest Demo` missing `--label
+        # demo` with no explanation. Validated BEFORE the first write, with the refusals
+        # above — see the comment below on why every refusal precedes the session row.
+        label = body.get("label")
+        if label is not None:
+            label = str(label).strip()
+            if not LABEL_REGEX.match(label):
+                return _json(start_response, "400 Bad Request", {"error": "bad label"})
+
         # EVERY refusal happens before the first write. `_agent_for` can reject, and
         # validating after the session and prompt rows are committed leaves a transcript
         # page showing a turn that was never submitted — plus a correlation id claimed in
@@ -275,7 +303,7 @@ class Handlers:
         # looked up: `mint_for` just claimed this correlation for `caller.userkey`, so
         # going back through the index would be a round trip for an answer already held.
         store = self.stores.for_userkey(caller.userkey) if self.stores else self.store
-        store.upsert_session(corr, sess, workdir, prompt)
+        store.upsert_session(corr, sess, workdir, prompt, label=label)
         store.insert_prompt(corr, "start", prompt, submitter=submitter)
         if groupid:
             # Membership before publication: the reverse order leaves a window where a
@@ -285,7 +313,7 @@ class Handlers:
             prompt=prompt, correlationid=corr, sessionuuid=sess,
             mode="start", model=model, max_turns=max_turns, subject="start",
             groupid=groupid, submitter=submitter, submitter_iss=sub_iss,
-            userkey=caller.userkey, agent=agent,
+            userkey=caller.userkey, agent=agent, label=label,
         )
         out = {
             "correlationid": corr, "sessionuuid": sess,
@@ -296,7 +324,62 @@ class Handlers:
         if groupid:
             out["groupid"] = groupid
             out["group_url"] = f"{self.cfg.public_base_url}/v0/groups/{groupid}"
+        if label:
+            out["label"] = label
         return _json(start_response, "202 Accepted", out)
+
+    def find_agent(self, environ, start_response, **_):
+        """Resolve a label to the correlationid of its most recent run.
+
+        `GET /v0/agents?label=<name>`. This exists to remove a copy-paste step from the
+        middle of a demo: the operator tags the run and then asks for the tag back,
+        instead of reading an id off the screen and retyping it. Same contract as
+        `--group latest` (`scripts/watch_topics.latest_group`), for one agent.
+
+        **`label` is required; there is no bare listing.** Phase 2 §8.2 already records
+        `GET /v0/groups` publishing correlation ids without sign-in as an open bug
+        (eventing-lab#1), because §3.1's capability-URL argument rests on those ids being
+        unguessable while `/continue` stays open. An agent list would be the same bug with
+        every row a capability to POST a turn into someone else's conversation. Nothing
+        needs it, so it is not built.
+
+        **Authenticated unconditionally**, which is a deliberate disagreement with
+        `list_groups` below: that resolves a caller only to pick a store, so on a
+        single-tenant deployment WITH auth — which is what the demo cluster is — copying
+        it would leave this route open. A label is a GUESSABLE human string, so an open
+        lookup is strictly worse than a published correlationid: the word "demo" would
+        hand over a continuable conversation. With no auth configured at all, `resolve`
+        still returns allowed-anonymous (§2.4, the thing that makes the laptop demo work
+        out of the box), so nothing regresses there.
+        """
+        caller, status, why = self._caller(environ)
+        if status:
+            return _deny(start_response, why, status)
+        qs = urllib.parse.parse_qs(environ.get("QUERY_STRING", ""))
+        label = (qs.get("label", [""])[0] or "").strip()
+        if not label:
+            return _json(start_response, "400 Bad Request",
+                         {"error": "label required: GET /v0/agents?label=<name>"})
+        if not LABEL_REGEX.match(label):
+            return _json(start_response, "400 Bad Request", {"error": "bad label"})
+        # §6.2: reading from the CALLER's OWN store is what enforces isolation — not a
+        # filter applied afterwards, which §6.1 says will eventually be forgotten.
+        # Without this, one tenant's label could resolve another tenant's run.
+        store = self.stores.for_userkey(caller.userkey) if self.stores else self.store
+        row = store.latest_for_label(label)
+        if row is None:
+            # The same 404 a foreign tenant's label gets, so the two are
+            # indistinguishable to a client (§6.2).
+            return _json(start_response, "404 Not Found",
+                         {"error": f"no agent with label {label!r}"})
+        corr = row["correlationid"]
+        return _json(start_response, "200 OK", {
+            "correlationid": corr,
+            "label": row["label"],
+            "created_utc": row["created_utc"],
+            "turns": row["turns"],
+            "html_url": f"{self.cfg.public_base_url}/v0/agents/{corr}",
+        })
 
     # ---- groups (§21) ----
     def create_group(self, environ, start_response, **_):

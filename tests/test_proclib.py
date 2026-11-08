@@ -45,6 +45,79 @@ def test_timeout_is_reported_as_timed_out():
     assert not r.ok
 
 
+# ---- run(stream=True) -------------------------------------------------------
+#
+# Added for the in-cluster audit, which used to capture a 30-60s pod to completion
+# and print `out + err` afterwards. Two separate lies: nothing appeared while it
+# ran, and the pod's stderr PROGRESS replayed after its stdout SUMMARY, reading as
+# though the audit had restarted. Streaming has to tee live AND still capture, and
+# it has to keep the two streams apart.
+
+def test_streaming_still_captures_both_streams():
+    """Liveness must not cost the captured copy — callers grep `Result.out`."""
+    r = run([sys.executable, "-c",
+             "import sys; print('to-stdout'); print('to-stderr', file=sys.stderr)"],
+            stream=True)
+    assert r.ok
+    assert "to-stdout" in r.out
+    assert "to-stderr" in r.err
+    # Kept APART. Merging would put a callee's progress into our stdout and so into
+    # any pipe the caller set up — `audit_topic.py … | tail -8` is in the demo script.
+    assert "to-stderr" not in r.out
+
+
+def test_streaming_captures_the_same_bytes_as_non_streaming():
+    """A caller must be able to turn streaming on without its parsing changing."""
+    argv = [sys.executable, "-c",
+            "import sys\nfor i in range(50):\n print(i)\n print(i, file=sys.stderr)"]
+    quiet, live = run(argv), run(argv, stream=True)
+    assert quiet.out == live.out
+    assert quiet.err == live.err
+
+
+def test_streaming_does_not_deadlock_on_a_large_stdout():
+    """The reason there are two reader threads rather than one loop.
+
+    A pod writing 80 KB of audit rows fills the 64 KB pipe buffer and blocks; a
+    single-threaded reader draining the OTHER pipe at that moment waits forever.
+    Both sides here exceed the buffer, so a regression hangs rather than fails —
+    the timeout is what turns that into a test failure.
+    """
+    r = run([sys.executable, "-c",
+             "import sys\n"
+             "big='x'*100_000\n"
+             "sys.stdout.write(big)\n"
+             "sys.stderr.write('y'*100_000)\n"],
+            stream=True, timeout=30)
+    assert r.ok
+    assert len(r.out) == 100_000
+    assert len(r.err) == 100_000
+
+
+def test_streaming_reports_a_nonzero_exit():
+    r = run([sys.executable, "-c", "import sys; print('bye'); sys.exit(3)"],
+            stream=True)
+    assert r.rc == 3 and not r.ok
+    assert "bye" in r.out
+
+
+def test_streaming_reports_a_missing_binary_as_launched_false():
+    """The §9 guarantee must survive the new code path, not just the old one."""
+    r = run(["no-such-binary-2d8f1a"], stream=True)
+    assert r.launched is False and r.rc == 127
+    assert bool(r) is False
+
+
+def test_streaming_timeout_keeps_what_was_already_written():
+    """A timed-out command's partial output is the diagnostic. Losing it would make
+    `tail()` useless for exactly the failure that most needs it."""
+    r = run([sys.executable, "-c",
+             "import time,sys; print('started', flush=True); time.sleep(10)"],
+            stream=True, timeout=1.5)
+    assert r.timed_out is True and not r.ok
+    assert "started" in r.out
+
+
 # ---- the §9 regression: never PASS for a command that did not run -----------
 
 def test_result_is_falsey_when_the_command_never_ran():

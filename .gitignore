@@ -13,6 +13,12 @@ docs/plans/*
 .env
 .env.*
 .env.local
+# The demo's own environment file. It holds a GitHub token (DEMO_GH_TOKEN) and an ntfy
+# topic, which is itself a capability — anyone who learns it can read and publish your
+# notifications. `scripts/login.py` deliberately writes nothing to disk; this file is
+# what an operator assembles by hand so a fresh pane can source it.
+.demo-env
+.demo-llm-env
 *.key
 *.pem
 *.p12

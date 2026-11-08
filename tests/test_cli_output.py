@@ -11,14 +11,43 @@ import shlex
 import subprocess
 import sys
 
+import pytest
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-# The skill lives IN the repository at eventing/skills/eventbridge. Claude Code sees
-# it through a symlink from the user's skills directory, so there is exactly one copy
-# to edit and it is version-controlled with the code it drives. These three tests
-# failed for months only because the skill used to live outside the repo entirely.
+# The skill lives IN the repository at eventing/skills/eventbridge, version-controlled
+# with the code it drives. These three tests failed for months only because the skill
+# used to live outside the repo entirely.
+#
+# It is ALSO installed at .claude/skills/eventbridge, as a real copy rather than a
+# symlink, because that is where `claude -p` resolves a project skill from. So there are
+# two files and they must not drift: a stale installed copy means the agent silently runs
+# an older CLI, which reads exactly like the feature working.
+# `test_the_two_skill_copies_are_identical` is the guard.
 SKILL_DIR = ROOT / "skills" / "eventbridge"
 CLI = SKILL_DIR / "eventbridge-cli.py"
 SKILL = SKILL_DIR / "SKILL.md"
+INSTALLED_DIR = ROOT / ".claude" / "skills" / "eventbridge"
+
+
+def test_the_two_skill_copies_are_identical():
+    """The repo copy and the installed copy must not drift.
+
+    `demo.txt` pre-flight #3 has the operator `cp` between them, and every test in this
+    file reads only the repo copy — so a drifted installed copy is invisible to the suite
+    while `claude -p` runs the stale one. That failure looks identical to success, which
+    is the whole reason pre-flight #3 exists.
+
+    Skipped rather than failed when the installed copy is absent: not every checkout
+    installs the skill, and this should not fail CI on a clean clone.
+    """
+    if not INSTALLED_DIR.exists():
+        pytest.skip("skill not installed at .claude/skills/eventbridge")
+    for name in ("eventbridge-cli.py", "SKILL.md"):
+        repo, installed = SKILL_DIR / name, INSTALLED_DIR / name
+        assert installed.exists(), f"{name} missing from the installed skill"
+        assert repo.read_bytes() == installed.read_bytes(), (
+            f"{name} differs between skills/ and .claude/skills/ — re-copy it, or "
+            f"`claude -p` will run a stale CLI while the repo looks correct")
 
 
 def test_cli_never_prints_url_wrapped_in_parens():
@@ -87,6 +116,33 @@ def test_a_prompt_with_a_quote_in_it_stays_pasteable():
     parsed = shlex.split(line[2:])
     assert parsed[2:] == ["run", "It's fine", "--no-watch",
                           "--base-url", "http://127.0.0.1:1"], parsed
+
+
+def test_latest_keeps_its_preamble_off_stdout():
+    """`latest` exists to be used as `CORR=$(… latest NAME)`, so stdout must carry the
+    correlationid and nothing else.
+
+    `main()` prints the `$ python3 …` echo and the `· endpoint …` line unconditionally,
+    and on stdout they would both land inside `$( )` — making `$CORR` three lines of
+    prose. They are REDIRECTED to stderr for this subcommand rather than suppressed,
+    because the docstrings on `_echo_command` and the endpoint line argue that always
+    printing them is what stopped a run quietly going to localhost.
+
+    Run against a port nothing listens on, so this needs no server: the preamble is
+    printed before the request is attempted.
+    """
+    p = _run(["latest", "smoke", "--base-url", "http://127.0.0.1:1"])
+    assert p.stdout == "", f"stdout must be empty on failure, got {p.stdout!r}"
+    assert "$ python3 " in p.stderr
+    assert "· endpoint http://127.0.0.1:1" in p.stderr
+    assert p.returncode != 0, "a failed lookup must exit non-zero, not set CORR=''"
+
+
+def test_latest_is_the_only_command_whose_preamble_moves():
+    """Every other command keeps the echo on stdout — the redirect is scoped to the one
+    subcommand whose output is captured."""
+    out = _run(["group", "list", "--base-url", "http://127.0.0.1:1"]).stdout
+    assert out.startswith("$ python3 ")
 
 
 def test_the_echo_can_be_turned_off():

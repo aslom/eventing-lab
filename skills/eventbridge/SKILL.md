@@ -19,11 +19,24 @@ map to the same intent — pick the right verb, not a literal string match.
 | "run an agent to X" · "run agent to X and print the response" · "ask an agent to X" | `run "X"` | Default output prints the model's reply inline. |
 | "run agent to X quietly" · "just start it, I'll check later" | `run "X" --no-watch` | Returns as soon as the correlationid is minted. |
 | "show every step" · "verbose" · "with tool calls" | `run "X" --verbose` | One labeled line per stream-json event. |
+| "run an agent to X and tag/label it NAME" · "label this run NAME" | `run "X" --label NAME` | Tags the run so `latest NAME` can find it again. |
+| "what was the last NAME run?" · "get the correlationid for NAME" | `latest NAME` | Prints the bare correlationid on stdout, for `CORR=$(… latest NAME)`. |
 | "check on <corr>" · "what happened with <corr>" · "any progress on <corr>" | `watch <corr>` | Polls until the correlation reaches `final=true`. |
 | "continue <corr>: Y" · "follow up on <corr> with Y" · "and now Y" (after a recent run) | `cont <corr> "Y"` | Resumes the same claude session. |
 | "chat <corr>" · "show the conversation for <corr>" · "print the transcript" | `chat <corr>` | Turn-grouped USER/ASSISTANT view. |
 | "run agent1 to X and agent2 to Y" · "run two agents" · "start these in parallel" | `runmany "X" "Y"` | Submits ALL prompts first, then follows them all. This is what makes KEDA scale past one pod. |
 | "run a batch of N agents, each …" · "run N agents as a group" · "100 agents saying Hello N" | `group run --template "…{n}…" --count N` | A **batch**: one start + one finish notification instead of N, a shared progress page, and watching is the default. Say "batch"/"group"/a count ≥ ~5 and this is the intent. |
+
+**Three different things are called "label"** — they do not interchange:
+
+| | What it is | Where it lives |
+|---|---|---|
+| `run --label NAME` | a tag for **finding this one run again**, via `latest NAME` | stored server-side on the session |
+| `runmany --label` | a per-agent **display name**, so interleaved output is readable | client-side only; never sent |
+| `group run --label` | the **batch's** name, shown on the group page | stored server-side on the group |
+
+Only the first is resolvable with `latest`. A group label and an agent label are separate
+namespaces, so the same word can mean both without colliding.
 
 **Two or more agents at once** — use `runmany`, never two separate `run` calls:
 
