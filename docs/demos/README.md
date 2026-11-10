@@ -12,12 +12,21 @@ being performed live in front of an audience.
 | [`phase1-demo.md`](phase1-demo.md)                             | The same path on Kubernetes, scaling from zero agent replicas on consumer lag    |
 | [`kubecon-na-2026-demo.md`](kubecon-na-2026-demo.md)           | The conference run-of-show on the signed path, every act marked doable or not    |
 | [`kubecon-na-2026-screenplay.md`](kubecon-na-2026-screenplay.md) | The six commands actually recorded for the talk, and the order to cut them in  |
+| [`agent-groups-demo.md`](agent-groups-demo.md)                  | Batch fan-out: three agents, then 100 — and why a batch sends two notifications, not 100 |
+| [`eventbridge-cli.md`](eventbridge-cli.md)                      | Driving any environment with the `/eventbridge` skill, and the `EVENTBRIDGE_URL` convention |
 
-All four are runbooks you read while typing, which is why they live here rather than in
+**▶ The recorded demo is on YouTube:
+[Eventing in Rossoctl for KubeCon NA 2026](https://youtu.be/s6494nZZ-hM).** The screenplay
+below is the shot list it was cut from.
+
+All six are runbooks you read while typing, which is why they live here rather than in
 [`../notes/`](../notes/). `phase1-demo.md` covers all four ways to run it — locally without
 containers, under Docker, on Kind, and on OpenShift — `phase0-demo.md` is still the more
 detailed account of the laptop path, and `kubecon-na-2026-demo.md` is the signed path on Kind
 with each act marked for whether it can be recorded today.
+
+The last two came out of the root `README.md` when it was reorganised to summarise and link
+rather than inline its runbooks; the commands are unchanged.
 
 **The last two are a pair and the split is deliberate.** The run-of-show is the reference:
 every act, what it does _not_ prove, the limits to say out loud. The screenplay is the shot

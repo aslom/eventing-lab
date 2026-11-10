@@ -564,6 +564,11 @@ at **10 Running pods**, batch done in 57 s.
 
 ### Watching the topics during a demo
 
+`scripts/watch_topics.py` is **cluster-only** — it locates a broker by the Strimzi
+selector `strimzi.io/name=my-cluster-kafka` and aborts against a local broker with
+`[watch] ABORT no Kafka broker pod matching …`. For a local run, point the Kafka CLI at
+`127.0.0.1:9092` directly (see [§1 Local](#1-local-quick-tests-no-containers)).
+
 Your `kafka-get-offsets.sh` pipeline is right — `--topic` does accept a regex in Kafka
 4.x. But **`watch` is not in the Strimzi broker image** (nor is `clear`), so running it
 inside the pod fails with `bash: line 1: watch: command not found`.
