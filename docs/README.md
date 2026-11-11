@@ -86,9 +86,10 @@ code and were remapped onto the convention above.
   decided, what is built as opposed to designed, and the KubeCon commitment with its
   gaps. It cites these documents rather than restating them, and it is the only one
   written for a reader who will not open the code.
-- **Running it?** [`demos/phase1-demo.md`](demos/phase1-demo.md), or the [Phase 1
-  section](../README.md#phase-1--kubernetes-and-keda) of the component README for
-  the short version.
+- **Running it?** [`demos/phase1-demo.md`](demos/phase1-demo.md), or the
+  [Quickstart](../README.md#quickstart) in the component README for the short version.
+  Batch fan-out is [`demos/agent-groups-demo.md`](demos/agent-groups-demo.md); the CLI is
+  [`demos/eventbridge-cli.md`](demos/eventbridge-cli.md).
 - **Changing it?** [`specs/0001-phase0-local-wire-contract.md`](specs/0001-phase0-local-wire-contract.md) for the wire contract that
   must not change, then [`specs/0002-phase1-keda-kubernetes.md`](specs/0002-phase1-keda-kubernetes.md) for the deployment
   model.
